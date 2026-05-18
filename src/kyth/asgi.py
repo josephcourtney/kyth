@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from starlette.websockets import WebSocket
@@ -70,7 +69,9 @@ class HTMLInjectingASGIWrapper:
                 except UnicodeDecodeError:
                     injected = body
 
-                assert start_message is not None
+                if start_message is None:
+                    msg = "HTML response body received before response start."
+                    raise RuntimeError(msg)
                 headers = list(start_message.get("headers", []))
                 headers = remove_header(headers, b"content-length")
                 headers = set_header(headers, b"content-length", str(len(injected)).encode("ascii"))
@@ -146,7 +147,7 @@ class KythApp:
     async def handle_lifespan(self, scope: Scope, receive: Receive, send: Send) -> None:
         await self.live.startup()
 
-        app_task = asyncio.create_task(self.app(scope, receive, send))
+        app_task = asyncio.ensure_future(self.app(scope, receive, send))
 
         try:
             await app_task

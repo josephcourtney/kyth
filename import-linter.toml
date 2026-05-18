@@ -2,58 +2,47 @@
   root_package              = "kyth"
   include_external_packages = false
 
-
-  [[tool.importlinter.contracts]]
-    name = "kyth dependency layers"
-    type = "layers"
-    layers = [
-      "kyth.cli",
-      "kyth.recipes",
-      "kyth.decorators",
-      "kyth.registry",
-      "kyth.deps",
-      "kyth.context",
-      "kyth.runner",
-      "kyth.options",
-      "kyth.layout",
-      "kyth.config",
-      "kyth.errors",
-    ]
-
-  [[tool.importlinter.contracts]]
-    name = "low-level modules must not depend on recipes"
-    type = "forbidden"
-    source_modules = [
-      "kyth.errors",
-      "kyth.config",
-      "kyth.layout",
-      "kyth.options",
-      "kyth.deps",
-      "kyth.runner",
-      "kyth.context",
-      "kyth.registry",
-      "kyth.decorators",
-    ]
-    forbidden_modules = [
-      "kyth.recipes",
-    ]
-
-
   [[tool.importlinter.contracts]]
     name = "non-cli modules must not depend on cli"
     type = "forbidden"
     source_modules = [
-      "kyth.errors",
-      "kyth.config",
-      "kyth.layout",
-      "kyth.options",
-      "kyth.deps",
-      "kyth.runner",
-      "kyth.context",
-      "kyth.registry",
-      "kyth.decorators",
-      "kyth.recipes",
+      "kyth.asgi",
+      "kyth.browser",
+      "kyth.constants",
+      "kyth.core",
+      "kyth.injection",
+      "kyth.logging",
+      "kyth.server",
+      "kyth.static",
+      "kyth.watcher",
     ]
     forbidden_modules = [
+      "kyth.cli",
+    ]
+
+  [[tool.importlinter.contracts]]
+    name = "low-level modules must not depend on server or asgi"
+    type = "forbidden"
+    source_modules = [
+      "kyth.constants",
+      "kyth.injection",
+      "kyth.logging",
+      "kyth.watcher",
+    ]
+    forbidden_modules = [
+      "kyth.server",
+      "kyth.asgi",
+      "kyth.cli",
+    ]
+
+  [[tool.importlinter.contracts]]
+    name = "browser must not depend on server or asgi"
+    type = "forbidden"
+    source_modules = [
+      "kyth.browser",
+    ]
+    forbidden_modules = [
+      "kyth.server",
+      "kyth.asgi",
       "kyth.cli",
     ]

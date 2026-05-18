@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import contextlib
-from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
 from starlette.responses import FileResponse, PlainTextResponse, Response
@@ -10,7 +9,9 @@ from kyth.constants import DEVCLIENT_PATH
 from kyth.injection import ensure_devclient_script
 from kyth.watcher import path_is_within
 
-if False:
+if TYPE_CHECKING:
+    from pathlib import Path
+
     from starlette.requests import Request
 
 
@@ -72,8 +73,3 @@ def static_response(root: Path, url_path: str, *, client_path: str = DEVCLIENT_P
 def static_handler(request: Request) -> Response:  # type: ignore[name-defined]
     state = request.app.state.dev
     return static_response(state.root, request.url.path, client_path=state.client_path)
-
-
-@contextlib.contextmanager
-def nullcontext() -> object:
-    yield

@@ -21,6 +21,27 @@ from kyth.constants import (
 )
 from kyth.logging import eprint, info
 
+CSS_EXTENSIONS = {".css"}
+ASSET_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".webp",
+    ".ico",
+    ".avif",
+}
+
+
+def reload_message_for_paths(paths: list[str]) -> dict[str, object]:
+    suffixes = {Path(path).suffix.lower() for path in paths}
+    if suffixes and suffixes <= CSS_EXTENSIONS:
+        return {"type": "css-reload", "paths": paths}
+    if suffixes and suffixes <= ASSET_EXTENSIONS:
+        return {"type": "asset-reload", "paths": paths}
+    return {"type": "reload", "paths": paths}
+
 
 class Broadcaster(Protocol):
     async def broadcast(self, message: dict[str, object]) -> None: ...
@@ -180,6 +201,7 @@ class LiveReloadState:
     on_change_command: str | None = None
     on_change_paths: tuple[str, ...] = ()
     reload_paths: tuple[str, ...] = ()
+    command_pending_paths: set[Path] = field(default_factory=set)
 
     async def broadcast(self, message: dict[str, object]) -> None:
         if not self.clients:
@@ -199,10 +221,7 @@ class LiveReloadState:
         if self.on_change_command is None:
             return
 
-        if not hasattr(self, "command_pending_paths"):
-            self.command_pending_paths = set()  # type: ignore[attr-defined]
-
-        self.command_pending_paths.update(changed_paths)  # type: ignore[attr-defined]
+        self.command_pending_paths.update(changed_paths)
 
         if self.command_task is None or self.command_task.done():
             self.command_task = asyncio.create_task(self.run_on_change_command_loop())
@@ -212,9 +231,9 @@ class LiveReloadState:
         if command is None:
             return
 
-        while getattr(self, "command_pending_paths", set()):
-            paths = sorted(self.command_pending_paths)  # type: ignore[attr-defined]
-            self.command_pending_paths.clear()  # type: ignore[attr-defined]
+        while self.command_pending_paths:
+            paths = sorted(self.command_pending_paths)
+            self.command_pending_paths.clear()
 
             display_paths = [display_path(path, self.command_cwd) for path in paths]
 
@@ -300,7 +319,7 @@ class LiveReloadState:
 
             if rel_paths:
                 info("[watch] changed:", ", ".join(rel_paths))
-                await self.broadcast({"type": "reload", "paths": rel_paths})
+                await self.broadcast(reload_message_for_paths(rel_paths))
 
             if command_changed:
                 self.schedule_on_change_command(command_changed)

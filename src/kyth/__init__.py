@@ -8,8 +8,8 @@ __all__ = [
     "DEFAULT_HTTP_PORT",
     "DEFAULT_WS_PORT",
     "DEVCLIENT_PATH",
+    "WS_PATH",
     "KythApp",
     "KythConfig",
-    "WS_PATH",
     "live_reload",
 ]

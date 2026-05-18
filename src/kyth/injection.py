@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from http import HTTPStatus
+from typing import TYPE_CHECKING
 
 from kyth.constants import DEVCLIENT_PATH
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 def ensure_devclient_script(html_text: str, *, client_path: str = DEVCLIENT_PATH) -> str:
@@ -83,7 +87,7 @@ def should_inject_html_response(
     status: int,
     headers: Iterable[tuple[bytes, bytes]],
 ) -> bool:
-    return status == 200 and content_type_is_html(headers) and not has_content_encoding(headers)
+    return status == HTTPStatus.OK and content_type_is_html(headers) and not has_content_encoding(headers)
 
 
 def inject_html_bytes(body: bytes, *, client_path: str = DEVCLIENT_PATH) -> bytes:

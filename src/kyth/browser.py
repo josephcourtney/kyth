@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import functools
+import importlib.resources
 import json
 from dataclasses import dataclass
 
@@ -10,152 +12,20 @@ from kyth.constants import WS_PATH
 from kyth.logging import info
 
 
+@functools.cache
+def _payload_template() -> str:
+    return importlib.resources.files("kyth.resources").joinpath("payload.js").read_text(encoding="utf-8")
+
+
 def make_devclient_js(ws_path: str = WS_PATH) -> str:
-    return f"""
-(() => {{
-  if (window.__PY_DEVSERVER_INSTALLED__) return;
-  window.__PY_DEVSERVER_INSTALLED__ = true;
-
-  const WS_URL = `${{location.protocol === "https:" ? "wss" : "ws"}}://${{location.host}}{ws_path}`;
-  let ws = null;
-  let reconnectTimer = null;
-  let intentionallyClosed = false;
-  const timers = new Map();
-
-  function stringify(value) {{
-    try {{
-      if (typeof value === "string") return value;
-      if (value instanceof Error) return value.stack || `${{value.name}}: ${{value.message}}`;
-      return JSON.stringify(value);
-    }} catch {{
-      try {{
-        return String(value);
-      }} catch {{
-        return "[unprintable value]";
-      }}
-    }}
-  }}
-
-  function send(type, payload) {{
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    try {{
-      ws.send(JSON.stringify({{ type, payload }}));
-    }} catch {{
-    }}
-  }}
-
-  function connect() {{
-    ws = new WebSocket(WS_URL);
-
-    ws.addEventListener("open", () => {{
-      send("hello", {{
-        url: location.href,
-        title: document.title || "",
-        userAgent: navigator.userAgent
-      }});
-    }});
-
-    ws.addEventListener("message", (event) => {{
-      let msg;
-      try {{
-        msg = JSON.parse(event.data);
-      }} catch {{
-        return;
-      }}
-
-      if (msg.type === "reload") {{
-        location.reload();
-        return;
-      }}
-    }});
-
-    ws.addEventListener("close", () => {{
-      if (intentionallyClosed) return;
-      if (reconnectTimer) return;
-      reconnectTimer = setTimeout(() => {{
-        reconnectTimer = null;
-        connect();
-      }}, 500);
-    }});
-  }}
-
-  for (const level of ["log", "info", "warn", "error", "debug"]) {{
-    const original = console[level] ? console[level].bind(console) : null;
-    console[level] = (...args) => {{
-      try {{
-        if (original) original(...args);
-      }} finally {{
-        send("console", {{
-          level,
-          url: location.href,
-          args: args.map(stringify)
-        }});
-      }}
-    }};
-  }}
-
-  const originalTime = console.time ? console.time.bind(console) : null;
-  const originalTimeLog = console.timeLog ? console.timeLog.bind(console) : null;
-  const originalTimeEnd = console.timeEnd ? console.timeEnd.bind(console) : null;
-
-  console.time = (label = "default") => {{
-    timers.set(String(label), performance.now());
-    if (originalTime) originalTime(label);
-  }};
-
-  console.timeLog = (label = "default", ...args) => {{
-    const key = String(label);
-    const start = timers.get(key);
-    if (start != null) {{
-      const ms = performance.now() - start;
-      send("console", {{
-        level: "info",
-        url: location.href,
-        args: [`${{key}}: ${{ms.toFixed(3)}}ms`, ...args.map(stringify)]
-      }});
-    }}
-    if (originalTimeLog) originalTimeLog(label, ...args);
-  }};
-
-  console.timeEnd = (label = "default") => {{
-    const key = String(label);
-    const start = timers.get(key);
-    if (start != null) {{
-      const ms = performance.now() - start;
-      send("console", {{
-        level: "info",
-        url: location.href,
-        args: [`${{key}}: ${{ms.toFixed(3)}}ms - timer ended`]
-      }});
-      timers.delete(key);
-    }}
-    if (originalTimeEnd) originalTimeEnd(label);
-  }};
-
-  window.addEventListener("error", (event) => {{
-    send("console", {{
-      level: "error",
-      url: location.href,
-      args: [
-        `window.onerror: ${{event.message}}`,
-        event.filename ? `file: ${{event.filename}}` : "",
-        Number.isFinite(event.lineno) ? `line: ${{event.lineno}}` : "",
-        Number.isFinite(event.colno) ? `col: ${{event.colno}}` : ""
-      ].filter(Boolean)
-    }});
-  }});
-
-  window.addEventListener("unhandledrejection", (event) => {{
-    send("console", {{
-      level: "error",
-      url: location.href,
-      args: ["unhandledrejection", stringify(event.reason)]
-    }});
-  }});
-
-  connect();
-}})();
-""".lstrip()
+    return (
+        _payload_template()
+        .replace(
+            "__KYTH_WS_PATH__",
+            json.dumps(ws_path),
+        )
+        .lstrip()
+    )
 
 
 def pretty_console_args(args: object) -> list[str]:

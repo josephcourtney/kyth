@@ -5,25 +5,28 @@ import importlib
 import socket
 import tempfile
 import webbrowser
-from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import uvicorn
 from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import Response
 from starlette.routing import Route, WebSocketRoute
-from starlette.types import ASGIApp
-from starlette.websockets import WebSocket
 from watchfiles import run_process
 
 from kyth.asgi import KythApp
 from kyth.browser import devclient_response, make_devclient_js, websocket_handler
-from kyth.constants import DEFAULT_HTTP_PORT, DEVCLIENT_PATH, ROOT, WS_PATH
+from kyth.constants import DEVCLIENT_PATH, ROOT, WS_PATH
 from kyth.logging import eprint, info
 from kyth.static import static_response
 from kyth.watcher import LiveReloadState, should_restart
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Iterator, Sequence
+
+    from starlette.requests import Request
+    from starlette.responses import Response
+    from starlette.types import ASGIApp
+    from starlette.websockets import WebSocket
 
 
 def choose_port(host: str, preferred: int) -> int:
@@ -69,7 +72,7 @@ class EmbeddedUvicornServer(uvicorn.Server):
 
     @staticmethod
     @contextlib.contextmanager
-    def capture_signals() -> AsyncIterator[None]:
+    def capture_signals() -> Iterator[None]:
         yield
 
 
@@ -150,8 +153,6 @@ def build_static_app(
         await state.startup()
         try:
             yield
-        except BaseException:
-            raise
         finally:
             await state.shutdown()
 
@@ -179,7 +180,8 @@ def build_static_app(
 def import_asgi_app(target: str) -> ASGIApp:
     module_name, sep, attr_path = target.partition(":")
     if not sep or not module_name or not attr_path:
-        raise ValueError("ASGI target must use 'module:app' syntax.")
+        msg = "ASGI target must use 'module:app' syntax."
+        raise ValueError(msg)
 
     module = importlib.import_module(module_name)
     value: Any = module
@@ -187,7 +189,7 @@ def import_asgi_app(target: str) -> ASGIApp:
     for attr in attr_path.split("."):
         value = getattr(value, attr)
 
-    return value
+    return cast("ASGIApp", value)
 
 
 def run_uvicorn_app(*, app: ASGIApp, host: str, port: int) -> int:
@@ -265,7 +267,7 @@ def run_asgi_child(
 
     try:
         app = import_asgi_app(target)
-    except Exception as exc:
+    except (AttributeError, ImportError, ValueError) as exc:
         eprint(f"error: failed to import ASGI app {target!r}: {exc}")
         return 2
 
