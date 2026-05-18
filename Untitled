@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+from kyth.core import DEFAULT_HOST, DEFAULT_HTTP_PORT, DEFAULT_WS_PORT, invoke_run_process, run_child
+
+ROOT_ARGUMENT = typer.Argument(
+    exists=False,
+    file_okay=False,
+    dir_okay=True,
+    readable=True,
+    resolve_path=False,
+    help="Directory to serve.",
+)
+
+cli = typer.Typer(
+    add_completion=True,
+    no_args_is_help=False,
+    pretty_exceptions_enable=False,
+    help="Static dev server with HTML injection, browser console forwarding, and live reload.",
+)
+
+
+@cli.command()
+def serve(
+    root: Annotated[Path, ROOT_ARGUMENT] = Path(),
+    host: Annotated[str, typer.Option(help="Bind host.")] = DEFAULT_HOST,
+    port: Annotated[int, typer.Option(min=0, max=65535, help="Preferred HTTP port.")] = DEFAULT_HTTP_PORT,
+    ws_port: Annotated[
+        int,
+        typer.Option(
+            "--ws-port",
+            min=0,
+            max=65535,
+            help="Ignored. Retained for CLI compatibility; WebSocket shares the HTTP port.",
+            rich_help_panel="Compatibility",
+        ),
+    ] = DEFAULT_WS_PORT,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not open the browser automatically.")] = False,
+    on_change: Annotated[
+        str | None,
+        typer.Option("--on-change", "-x", help="Shell command to run after selected files change."),
+    ] = None,
+    on_change_path: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--on-change-path",
+            "--watch",
+            "-w",
+            help="File, directory, or glob that triggers --on-change. May be repeated.",
+        ),
+    ] = None,
+    child: Annotated[bool, typer.Option("--child", hidden=True)] = False,
+) -> None:
+    del ws_port
+
+    invocation_cwd = str(Path.cwd())
+    on_change_paths = tuple(on_change_path or ())
+
+    kwargs = {
+        "root": str(root),
+        "host": host,
+        "port": port,
+        "no_open": no_open,
+        "invocation_cwd": invocation_cwd,
+        "on_change": on_change,
+        "on_change_paths": on_change_paths,
+    }
+
+    if child:
+        raise typer.Exit(run_child(**kwargs))
+
+    raise typer.Exit(invoke_run_process(**kwargs))
