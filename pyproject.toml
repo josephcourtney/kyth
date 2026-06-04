@@ -20,7 +20,7 @@
     "great-tables>=0.21.0",
     "jinja2>=3.1.6",
     "polars>=1.40.1",
-    "starlette>=1.0.0",
+    "starlette>=1.0.1",
     "typer>=0.24.1",
     "uvicorn>=0.46.0",
     "watchfiles>=1.1.1",
