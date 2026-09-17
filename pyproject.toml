@@ -14,6 +14,7 @@
   requires-python = ">=3.12,<3.15"
 
   dependencies = [
+    "uvicorn>=0.53.0",
   ]
 
   [project.scripts]
@@ -178,6 +179,10 @@
     "observability: Tests asserting presence/shape of logs/metrics/traces.",
 
     # Operational/meta
+    "small: Hermetic test under 1 second; no filesystem, network, subprocess, database, or sleep.",
+    "medium: Test under 5 minutes; filesystem, localhost networking, and subprocesses are allowed.",
+    "large: Test under 15 minutes; external networking and systems are allowed.",
+    "xlarge: Extended test under 15 minutes with unrestricted external resources.",
     "slow: Known slow tests.",
     "flaky: Known flaky tests under triage.",
     "legacy: Legacy tests awaiting refactor/removal.",

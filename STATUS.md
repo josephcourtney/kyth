@@ -1,26 +1,25 @@
 # Status
 
+This file records the current implementation state and immediate handoff context. `DESIGN.md` remains authoritative for architecture and `PLAN.md` for sequencing.
+
 ## Current focus
 
-The `rewrite/dev-server-v1` branch has been reset for a ground-up Kyth implementation.
+Phase 1 of the ground-up Kyth implementation is complete. The next implementation boundary is Phase 2: filesystem watching and restart classification.
 
 ## Current state
 
-- replacement architecture is defined in `DESIGN.md`;
-- concrete V1 runtime/reload behavior is specified in `notes/design/v1-protocol.md`;
-- implementation sequencing is defined in `PLAN.md`;
-- the previous Python implementation, tests, generated lockfile, and architecture-specific tooling have been removed from this branch;
-- obsolete generic testing notes and the accidentally committed Rope database have been removed;
-- `POLICY.md` remains the repository documentation policy;
-- no executable Kyth package currently exists on this branch.
-
-## Next boundary
-
-Begin Phase 1 from `PLAN.md`: establish the minimal package/tooling scaffold and implement the supervisor-owned socket plus restartable ASGI child lifecycle before adding filesystem or browser behavior.
+- `kyth package.module:app` runs an ASGI target under a long-lived supervisor;
+- the supervisor binds and retains the public listening socket across child replacement;
+- application children run under Uvicorn without Uvicorn reload mode;
+- readiness is reported only after ASGI lifespan startup completes;
+- startup failure leaves the supervisor recoverable without rebinding the public port;
+- shutdown is graceful for a bounded interval, then escalates through terminate and kill;
+- child status and committed development generation are explicit model state;
+- lifecycle tests cover stable socket ownership, restart, startup failure/recovery, readiness ordering, and hung shutdown;
+- tests are categorized for strict `pytest-test-categories` enforcement.
 
 ## Known gaps
 
-- no package metadata or dependency lock exists yet;
-- no source or tests exist yet;
-- exact cross-platform socket-passing support is not yet implemented or validated;
-- browser protocol and provenance behavior are design-only until later plan phases.
+- no filesystem watcher or automatic restart trigger exists yet;
+- the browser control plane, HTML injection, and provenance/invalidation behavior remain design-only;
+- socket passing is implemented through Python multiprocessing's spawn context and has not yet been exercised on every supported operating system.

@@ -19,6 +19,8 @@ Items should be categorized under these headings:
 
 ### Added
 
+- add the Phase 1 development supervisor with a persistent public socket, restartable ASGI child, explicit readiness reporting, bounded shutdown, failure recovery, generation state, and initial CLI
+
 ### Changed
 
 ### Deprecated
