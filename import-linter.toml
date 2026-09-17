@@ -1,0 +1,70 @@
+# import-linter.toml
+#
+# Architecture:
+#
+#   cli
+#    |
+# supervisor
+#    |
+#   +--------------------------+
+#   |            |             |
+# watcher      process       control
+#   |            |             |
+#   +------------+-------------+
+#                |
+# changes | invalidation | provenance | injection
+#                |
+#             protocol
+#                |
+#              model
+#
+# More precisely:
+#
+# - cli is the composition and user-interface boundary.
+#
+# - supervisor owns development-session orchestration: filesystem change
+#   handling, application process lifecycle, generations, active views, and
+#   browser-update decisions.
+#
+# - watcher, process, and control are independent mechanisms:
+#     - watcher observes filesystem changes;
+#     - process manages the restartable ASGI child;
+#     - control serves the long-lived browser control plane.
+#   They must not coordinate directly with one another; supervisor coordinates
+#   them.
+#
+# - changes, invalidation, provenance, and injection are independent domain
+#   services:
+#     - changes classifies filesystem changes;
+#     - invalidation computes stale rendered outputs/views;
+#     - provenance tracks render/source dependencies;
+#     - injection modifies development HTML responses.
+#
+# - protocol contains shared development-control message types and contracts.
+#
+# - model contains dependency-free value objects, identifiers, enums, and
+#   state representations.
+#
+# "|" denotes independent siblings: modules at that level may not import one
+# another, but may import lower layers.
+#
+# exhaustive=true ensures that every new top-level kyth module is deliberately
+# assigned to the architecture.
+
+[tool.importlinter]
+  root_package              = "kyth"
+  include_external_packages = false
+
+  [[tool.importlinter.contracts]]
+    name = "kyth follows its layered architecture"
+    type = "layers"
+    containers = ["kyth"]
+    layers = [
+      "cli",
+      "supervisor",
+      "watcher | process | control",
+      "changes | invalidation | provenance | injection",
+      "protocol",
+      "model",
+    ]
+    exhaustive = true
