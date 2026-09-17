@@ -1,70 +1,444 @@
 # import-linter.toml
 #
-# Architecture:
+# Kyth architecture
+# =================
 #
-#   cli
-#    |
-# supervisor
-#    |
-#   +--------------------------+
-#   |            |             |
-# watcher      process       control
-#   |            |             |
-#   +------------+-------------+
-#                |
-# changes | invalidation | provenance | injection
-#                |
-#             protocol
-#                |
-#              model
+# Kyth is not a single strict dependency stack. It has a central supervisor
+# coordinating several independent mechanisms, plus child-side injection code
+# that forms a separate branch of the architecture.
 #
-# More precisely:
+# The broad structure is:
 #
-# - cli is the composition and user-interface boundary.
+#                         __main__
+#                            |
+#                           cli
+#                            |
+#                       supervisor
+#                            |
+#          +-----------------+-----------------+
+#          |                 |                 |
+#       watcher           process           control
+#                            |
+#                         injection
 #
-# - supervisor owns development-session orchestration: filesystem change
-#   handling, application process lifecycle, generations, active views, and
-#   browser-update decisions.
+#          +-----------------+-----------------+
+#          |                 |                 |
+#       changes        invalidation       provenance
 #
-# - watcher, process, and control are independent mechanisms:
-#     - watcher observes filesystem changes;
-#     - process manages the restartable ASGI child;
-#     - control serves the long-lived browser control plane.
-#   They must not coordinate directly with one another; supervisor coordinates
-#   them.
+#                            |
+#                         protocol
+#                            |
+#                          model
 #
-# - changes, invalidation, provenance, and injection are independent domain
-#   services:
-#     - changes classifies filesystem changes;
-#     - invalidation computes stale rendered outputs/views;
-#     - provenance tracks render/source dependencies;
-#     - injection modifies development HTML responses.
 #
-# - protocol contains shared development-control message types and contracts.
+# The diagram is intentionally not a pure layered stack:
 #
-# - model contains dependency-free value objects, identifiers, enums, and
-#   state representations.
+# - cli is the composition / command-line boundary.
 #
-# "|" denotes independent siblings: modules at that level may not import one
-# another, but may import lower layers.
+# - supervisor is the sole runtime orchestration boundary.
 #
-# exhaustive=true ensures that every new top-level kyth module is deliberately
-# assigned to the architecture.
+# - watcher, process, and control are independent mechanisms coordinated by
+#   supervisor:
+#
+#     watcher
+#       observes and batches filesystem events.
+#
+#     process
+#       owns application-child lifecycle, persistent listening-socket use,
+#       readiness, graceful shutdown, and restart behavior.
+#
+#     control
+#       owns browser registration and the long-lived browser control plane.
+#
+# - changes, invalidation, and provenance are independent domain services:
+#
+#     changes
+#       classifies filesystem changes and determines their semantic effects.
+#
+#     invalidation
+#       represents and computes stale outputs / affected views.
+#
+#     provenance
+#       records source -> rendered-output dependencies and obtains those
+#       relationships from direct serving, manifests, template adapters, etc.
+#
+# - injection is child-side infrastructure. process may use injection to wrap
+#   an ASGI application, but injection must not reach back into supervisor-side
+#   orchestration, filesystem observation, browser-control state, or domain
+#   invalidation logic.
+#
+# - protocol contains shared control-plane and cross-boundary message types.
+#
+# - model contains dependency-free internal value objects and state types.
+#
+#
+# Contract strategy
+# -----------------
+#
+# This file deliberately uses several contracts instead of forcing the entire
+# architecture into one artificial linear stack.
+#
+# 1. A coarse layers contract establishes the general downward dependency
+#    direction.
+#
+#    ":" is used for same-level modules because their independence is enforced
+#    separately and explicitly below.
+#
+# 2. Independence contracts prohibit hidden coordination between:
+#
+#       watcher <-> process <-> control
+#
+#    and:
+#
+#       changes <-> invalidation <-> provenance
+#
+#    Coordination belongs in supervisor.
+#
+# 3. Forbidden contracts make the narrower responsibilities explicit,
+#    especially for injection and mechanism modules.
+#
+# 4. injection is excluded from the exhaustive coarse layer because it forms a
+#    side branch below process rather than fitting naturally into that stack.
+#    It is constrained by its own contracts below.
+#
+#    Every OTHER new top-level kyth module is still rejected by
+#    exhaustive=true until it is deliberately assigned an architectural role.
+#
+#
+# Subpackages
+# -----------
+#
+# Implementation detail belongs beneath these top-level architectural units.
+#
+# Examples:
+#
+#   kyth.process.manager
+#   kyth.process.child
+#   kyth.process.socket
+#   kyth.process.readiness
+#
+#   kyth.control.app
+#   kyth.control.sse
+#   kyth.control.views
+#
+#   kyth.provenance.direct
+#   kyth.provenance.manifest
+#   kyth.provenance.jinja
+#
+#   kyth.injection.middleware
+#   kyth.injection.html
+#
+# Adding files within one of those packages is ordinary implementation work.
+# Adding a new top-level kyth.foo module is an architectural change and should
+# require an intentional update to DESIGN.md and this file.
+
 
 [tool.importlinter]
   root_package              = "kyth"
   include_external_packages = false
 
+
+  # =============================================================================
+  # Coarse dependency direction
+  # =============================================================================
+  #
+  # This contract establishes the broad dependency direction without pretending
+  # that all same-level modules form one architectural component.
+  #
+  # Colons mean that this contract itself permits imports between same-level
+  # modules. The independence contracts below then prohibit those dependencies
+  # explicitly where Kyth requires independence.
+  #
+  # injection is intentionally omitted from this stack and listed in
+  # exhaustive_ignores. It is constrained separately as a child-side branch.
+
   [[tool.importlinter.contracts]]
-    name = "kyth follows its layered architecture"
+    name = "kyth follows its coarse dependency direction"
     type = "layers"
+
     containers = ["kyth"]
+
     layers = [
+      "__main__",
       "cli",
       "supervisor",
-      "watcher | process | control",
-      "changes | invalidation | provenance | injection",
+      "watcher : process : control",
+      "changes : invalidation : provenance",
       "protocol",
       "model",
     ]
+
     exhaustive = true
+    exhaustive_ignores = [
+      "injection",
+    ]
+
+
+    # =============================================================================
+    # Runtime mechanisms
+    # =============================================================================
+    #
+    # watcher, process, and control provide mechanisms to supervisor. They do not
+    # orchestrate one another.
+    #
+    # In particular:
+    #
+    # - watcher must not restart processes;
+    # - process must not operate the browser control plane;
+    # - control must not observe the filesystem or manage the application child.
+    #
+    # Any coordination between them belongs in supervisor.
+
+  [[tool.importlinter.contracts]]
+    name = "runtime mechanisms are independent"
+    type = "independence"
+
+    modules = [
+      "kyth.watcher",
+      "kyth.process",
+      "kyth.control",
+    ]
+
+
+    # =============================================================================
+    # Domain services
+    # =============================================================================
+    #
+    # These modules answer separate questions:
+    #
+    #   changes:
+    #       What does this filesystem change mean?
+    #
+    #   provenance:
+    #       Which outputs depend on this source?
+    #
+    #   invalidation:
+    #       Which known outputs/views are now stale?
+    #
+    # They should communicate through values assembled by supervisor rather than
+    # importing one another and quietly forming another orchestration layer.
+
+  [[tool.importlinter.contracts]]
+    name = "domain services are independent"
+    type = "independence"
+
+    modules = [
+      "kyth.changes",
+      "kyth.invalidation",
+      "kyth.provenance",
+    ]
+
+
+    # =============================================================================
+    # Child-side injection branch
+    # =============================================================================
+    #
+    # process may depend on injection because application-child construction may
+    # install the development ASGI wrapper.
+    #
+    # injection may then depend on shared protocol/model types.
+    #
+    # The reverse direction is forbidden by this layers contract:
+    #
+    #   process
+    #      |
+    #   injection
+    #      |
+    #   protocol
+    #      |
+    #    model
+    #
+    # This contract is intentionally separate from the coarse supervisor stack.
+
+  [[tool.importlinter.contracts]]
+    name = "child-side injection follows a one-way dependency direction"
+    type = "layers"
+
+    layers = [
+      "kyth.process",
+      "kyth.injection",
+      "kyth.protocol",
+      "kyth.model",
+    ]
+
+
+    # =============================================================================
+    # Injection isolation
+    # =============================================================================
+    #
+    # injection transforms development-time ASGI/HTML behavior. It must not become
+    # a back door into supervisor-side state or policy.
+    #
+    # It may depend on:
+    #
+    # - its own submodules;
+    # - protocol;
+    # - model;
+    # - external libraries.
+    #
+    # It may not depend directly or indirectly on any of the modules below.
+
+  [[tool.importlinter.contracts]]
+    name = "injection is isolated from supervisor-side behavior"
+    type = "forbidden"
+
+    source_modules = [
+      "kyth.injection",
+    ]
+
+    forbidden_modules = [
+      "kyth.__main__",
+      "kyth.cli",
+      "kyth.supervisor",
+      "kyth.watcher",
+      "kyth.process",
+      "kyth.control",
+      "kyth.changes",
+      "kyth.invalidation",
+      "kyth.provenance",
+    ]
+
+
+    # =============================================================================
+    # Watcher isolation
+    # =============================================================================
+    #
+    # watcher observes filesystem changes. It does not interpret their application
+    # meaning, compute invalidation, inspect rendering provenance, or perform HTML
+    # injection.
+    #
+    # This keeps filesystem observation reusable and prevents classification policy
+    # from leaking into the observation mechanism.
+
+  [[tool.importlinter.contracts]]
+    name = "watcher only observes filesystem activity"
+    type = "forbidden"
+
+    source_modules = [
+      "kyth.watcher",
+    ]
+
+    forbidden_modules = [
+      "kyth.changes",
+      "kyth.invalidation",
+      "kyth.provenance",
+      "kyth.injection",
+    ]
+
+
+    # =============================================================================
+    # Process isolation
+    # =============================================================================
+    #
+    # process owns child lifecycle mechanics. Apart from using injection to prepare
+    # the child application, it must not make change-classification, provenance, or
+    # invalidation decisions.
+    #
+    # The runtime-mechanism independence contract already prevents process from
+    # depending on watcher or control.
+
+  [[tool.importlinter.contracts]]
+    name = "process management contains no reload policy"
+    type = "forbidden"
+
+    source_modules = [
+      "kyth.process",
+    ]
+
+    forbidden_modules = [
+      "kyth.changes",
+      "kyth.invalidation",
+      "kyth.provenance",
+    ]
+
+
+    # =============================================================================
+    # Control-plane isolation
+    # =============================================================================
+    #
+    # control transports development events and tracks browser/view connections.
+    # It does not decide which filesystem changes matter or compute provenance and
+    # invalidation.
+    #
+    # supervisor performs those decisions and asks control to communicate their
+    # results.
+
+  [[tool.importlinter.contracts]]
+    name = "control plane contains no invalidation policy"
+    type = "forbidden"
+
+    source_modules = [
+      "kyth.control",
+    ]
+
+    forbidden_modules = [
+      "kyth.changes",
+      "kyth.invalidation",
+      "kyth.provenance",
+      "kyth.injection",
+    ]
+
+
+    # =============================================================================
+    # Protocol isolation
+    # =============================================================================
+    #
+    # protocol defines shared messages and cross-boundary contracts. It must not
+    # depend on higher-level behavior.
+    #
+    # The coarse layers contract already prevents these imports, but spelling this
+    # boundary out documents an especially important invariant and protects it if
+    # the coarse layering is later relaxed.
+
+  [[tool.importlinter.contracts]]
+    name = "protocol contains no application behavior"
+    type = "forbidden"
+
+    source_modules = [
+      "kyth.protocol",
+    ]
+
+    forbidden_modules = [
+      "kyth.__main__",
+      "kyth.cli",
+      "kyth.supervisor",
+      "kyth.watcher",
+      "kyth.process",
+      "kyth.control",
+      "kyth.changes",
+      "kyth.invalidation",
+      "kyth.provenance",
+      "kyth.injection",
+    ]
+
+
+    # =============================================================================
+    # Model isolation
+    # =============================================================================
+    #
+    # model is the dependency-free bottom of the Kyth architecture.
+    #
+    # It may use Python's standard library and external packages where justified,
+    # but it must not import any other Kyth architectural module.
+
+  [[tool.importlinter.contracts]]
+    name = "model is independent of the rest of kyth"
+    type = "forbidden"
+
+    source_modules = [
+      "kyth.model",
+    ]
+
+    forbidden_modules = [
+      "kyth.__main__",
+      "kyth.cli",
+      "kyth.supervisor",
+      "kyth.watcher",
+      "kyth.process",
+      "kyth.control",
+      "kyth.changes",
+      "kyth.invalidation",
+      "kyth.provenance",
+      "kyth.injection",
+      "kyth.protocol",
+    ]

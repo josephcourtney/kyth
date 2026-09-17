@@ -17,9 +17,11 @@ PACKAGE        := file_stem(ROOT_DIR)
 PYTHON_PACKAGE := env("PYTHON_PACKAGE", "kyth")
 VERBOSE        := env("VERBOSE", "0")
 
-REPO_CACHE_DIR := ROOT_DIR + "/.cache"
-UV_CACHE_DIR   := REPO_CACHE_DIR + "/uv"
-RUFF_CACHE_DIR := REPO_CACHE_DIR + "/ruff"
+REPO_CACHE_DIR           := ROOT_DIR + "/.cache"
+UV_CACHE_DIR             := REPO_CACHE_DIR + "/uv"
+RUFF_CACHE_DIR           := REPO_CACHE_DIR + "/ruff"
+IMPORT_LINTER_CACHE_DIR  := REPO_CACHE_DIR + "/import-linter"
+PYTEST_CACHE_DIR         := REPO_CACHE_DIR + "/pytest"
 
 PY_SRC      := "src"
 PY_TESTPATH := "tests"
@@ -30,18 +32,18 @@ PY_SCRIPTS  := "scripts"
 # Tool wrappers
 # ======================================================================
 
-UV                  := "uv --cache-dir " + UV_CACHE_DIR
-PYTHON              := UV + " run python"
-RUFF                := UV + " run ruff"
-RUFF_LINT           := RUFF + " check --cache-dir " + RUFF_CACHE_DIR
-RUFF_FORMAT         := RUFF + " format --cache-dir " + RUFF_CACHE_DIR
-PYTEST              := UV + " run pytest"
-TY                  := UV + " run ty"
-SHOWCOV             := UV + " run showcov"
-VULTURE             := UV + " run vulture"
-RADON               := UV + " run radon"
-IMPORTLINTER        := UV + " run lint-imports"
-IMPORTLINTER_CONFIG := ROOT_DIR + "/import-linter.toml"
+UV                   := "uv --cache-dir " + UV_CACHE_DIR
+PYTHON               := UV + " run python"
+RUFF                 := UV + " run ruff"
+RUFF_LINT            := RUFF + " check --cache-dir " + RUFF_CACHE_DIR
+RUFF_FORMAT          := RUFF + " format --cache-dir " + RUFF_CACHE_DIR
+PYTEST               := UV + " run pytest -o cache_dir=" + PYTEST_CACHE_DIR
+TY                   := UV + " run ty"
+SHOWCOV              := UV + " run showcov"
+VULTURE              := UV + " run vulture"
+RADON                := UV + " run radon"
+IMPORT_LINTER        := UV + " run lint-imports --cache-dir " + IMPORT_LINTER_CACHE_DIR
+IMPORT_LINTER_CONFIG := ROOT_DIR + "/import-linter.toml"
 
 JSCPD := "npx --yes jscpd@4.0"
 
@@ -100,7 +102,7 @@ env:
   @echo "SHOWCOV={{SHOWCOV}}"
   @echo "VULTURE={{VULTURE}}"
   @echo "RADON={{RADON}}"
-  @echo "IMPORTLINTER={{IMPORTLINTER}}"
+  @echo "IMPORT_LINTER={{IMPORT_LINTER}}"
   @echo "JSCPD={{JSCPD}}"
   @{{UV}} --version || true
   @{{PYTEST}} --version || true
@@ -337,7 +339,7 @@ format check="false":
 [group('code quality')]
 lint-imports:
   just _log_start lint-imports
-  {{IMPORTLINTER}} --verbose --config "{{IMPORTLINTER_CONFIG}}"
+  {{IMPORT_LINTER}} --verbose --config "{{IMPORT_LINTER_CONFIG}}"
   just _log_end lint-imports
 
 

@@ -194,7 +194,8 @@
 
 # =================================== test:coverage ===================================
 [tool.coverage.run]
-  core     = "ctrace"
-  source   = ["kyth"]
-  branch   = true
-  parallel = true
+  core      = "ctrace"
+  source    = ["kyth"]
+  branch    = true
+  parallel  = true
+  data_file = ".cache/coverage/.coverage"
