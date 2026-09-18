@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import multiprocessing
-import socket
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -10,6 +9,7 @@ from kyth.process.child import run_child
 from kyth.process.readiness import ChildCommand, StartupEvent, StartupEventKind
 
 if TYPE_CHECKING:
+    import socket
     from multiprocessing.connection import Connection
     from multiprocessing.context import BaseContext
     from multiprocessing.process import BaseProcess
@@ -72,21 +72,41 @@ class ChildProcess:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return StartupResult(False, "startup timed out", process.exitcode)
+                return StartupResult(
+                    ready=False,
+                    error="startup timed out",
+                    exit_code=process.exitcode,
+                )
 
             if readiness.poll(min(remaining, 0.05)):
                 try:
                     event = readiness.recv()
                 except EOFError:
-                    return StartupResult(False, "child exited before reporting readiness", process.exitcode)
+                    return StartupResult(
+                        ready=False,
+                        error="child exited before reporting readiness",
+                        exit_code=process.exitcode,
+                    )
                 if not isinstance(event, StartupEvent):
-                    return StartupResult(False, "child sent an invalid startup event", process.exitcode)
+                    return StartupResult(
+                        ready=False,
+                        error="child sent an invalid startup event",
+                        exit_code=process.exitcode,
+                    )
                 if event.kind is StartupEventKind.READY:
-                    return StartupResult(True)
-                return StartupResult(False, event.detail, process.exitcode)
+                    return StartupResult(ready=True)
+                return StartupResult(
+                    ready=False,
+                    error=event.detail,
+                    exit_code=process.exitcode,
+                )
 
             if not process.is_alive():
-                return StartupResult(False, "child exited before reporting readiness", process.exitcode)
+                return StartupResult(
+                    ready=False,
+                    error="child exited before reporting readiness",
+                    exit_code=process.exitcode,
+                )
 
     def stop(self, *, grace_timeout: float, terminate_timeout: float) -> int | None:
         process = self._require_process()

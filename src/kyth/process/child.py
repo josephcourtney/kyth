@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import socket
 import threading
 from typing import TYPE_CHECKING
 
@@ -10,6 +9,7 @@ import uvicorn
 from kyth.process.readiness import ChildCommand, StartupEvent
 
 if TYPE_CHECKING:
+    import socket
     from multiprocessing.connection import Connection
 
 

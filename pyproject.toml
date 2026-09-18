@@ -84,15 +84,7 @@
       # "PLC1901", # `{expression} != ""` can be simplified to `{expression}` as an empty string is falsey
       #
     ]
-    [tool.ruff.lint.extend-per-file-ignores]
-      # The public facade deliberately wraps private compatibility implementation
-      # objects until TODO 1 deletes the remaining alpha compatibility layer.
-      "src/kyth/api.py" = ["SLF001"]
-
-      # These two classes intentionally implement wide repository contracts. Splitting them solely to satisfy
-      # a method-count threshold would preserve the same interface while obscuring the cohesive abstraction.
-      "src/kyth/repository.py"      = ["PLR0904"]
-      "src/kyth/sqlite_metadata.py" = ["PLR0904"]
+    # [tool.ruff.lint.extend-per-file-ignores]
 
 
 # =================================== test ===================================

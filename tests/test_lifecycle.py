@@ -4,12 +4,15 @@ import http.client
 import socket
 import sys
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from kyth.model import ChildStatus
 from kyth.supervisor import Supervisor, SupervisorConfig
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _write_app(
@@ -23,11 +26,13 @@ def _write_app(
     if startup_marker is not None:
         startup_marker_code = f"Path({str(startup_marker)!r}).write_text('ready', encoding='utf-8')\n                "
 
-    shutdown_code = "await asyncio.Event().wait()" if shutdown_hang else (
-        'await send({"type": "lifespan.shutdown.complete"})\n                return'
+    shutdown_code = (
+        "await asyncio.Event().wait()"
+        if shutdown_hang
+        else ('await send({"type": "lifespan.shutdown.complete"})\n                return')
     )
     path.write_text(
-        f'''import asyncio
+        f"""import asyncio
 from pathlib import Path
 
 
@@ -42,7 +47,7 @@ async def app(scope, receive, send):
     elif scope["type"] == "http":
         await send({{"type": "http.response.start", "status": 200, "headers": []}})
         await send({{"type": "http.response.body", "body": {body.encode()!r}}})
-''',
+""",
         encoding="utf-8",
     )
 

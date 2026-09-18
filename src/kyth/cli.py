@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 from typing import TYPE_CHECKING
 
@@ -36,8 +37,6 @@ def cli(argv: Sequence[str] | None = None) -> int:
 
     with Supervisor(config) as supervisor:
         supervisor.start_child()
-        try:
+        with contextlib.suppress(KeyboardInterrupt):
             supervisor.run_forever()
-        except KeyboardInterrupt:
-            pass
     return 0

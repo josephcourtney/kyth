@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import logging
-import socket
 import time
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from kyth.model import ChildState, ChildStatus, DevelopmentState
 from kyth.process.manager import ChildProcess
 from kyth.process.socket import DEFAULT_BACKLOG, bind_listening_socket
 
 if TYPE_CHECKING:
+    import socket
     from multiprocessing.context import BaseContext
     from types import TracebackType
 
@@ -128,7 +128,7 @@ class Supervisor:
             self._socket.close()
             self._socket = None
 
-    def __enter__(self) -> Supervisor:
+    def __enter__(self) -> Self:
         """Open the supervisor-owned listening socket."""
         self.open()
         return self
