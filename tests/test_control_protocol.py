@@ -34,14 +34,12 @@ def _read_sse_event(response: http.client.HTTPResponse) -> dict[str, str]:
         key, value = line.split(":", 1)
         fields[key] = value.lstrip()
 
-
 @pytest.mark.unit
 @pytest.mark.small
 def test_sse_encoding_contains_generation_event_and_structured_data() -> None:
     encoded = encode_sse(ControlEvent.sync(7)).decode()
 
     assert encoded == 'id: 7\nevent: sync\ndata: {"data":{},"generation":7}\n\n'
-
 
 @pytest.mark.integration
 @pytest.mark.medium
@@ -107,7 +105,6 @@ def test_registration_and_sse_generation_sync() -> None:
         assert view is not None
         assert view.url == f"{LOOPBACK_ORIGIN}/page"
 
-
 @pytest.mark.integration
 @pytest.mark.medium
 def test_control_service_rejects_bad_token_and_non_loopback_origin() -> None:
@@ -127,7 +124,6 @@ def test_control_service_rejects_bad_token_and_non_loopback_origin() -> None:
         assert response.status == HTTPStatus.FORBIDDEN
         response.read()
         connection.close()
-
 
 @pytest.mark.integration
 @pytest.mark.medium
@@ -151,7 +147,6 @@ def test_preflight_reflects_only_allowed_loopback_origin() -> None:
         response.read()
         connection.close()
 
-
 @pytest.mark.integration
 @pytest.mark.medium
 def test_control_service_serves_token_gated_browser_client() -> None:
@@ -171,8 +166,6 @@ def test_control_service_serves_token_gated_browser_client() -> None:
         assert 'addEventListener("asset-update"' in body
         assert "resources_complete" in body
         connection.close()
-
-
 
 @pytest.mark.integration
 @pytest.mark.medium

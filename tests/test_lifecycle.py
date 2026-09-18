@@ -177,7 +177,6 @@ def _control_health(address: tuple[str, int], token: str) -> dict[str, object]:
     finally:
         connection.close()
 
-
 @pytest.mark.system
 @pytest.mark.medium
 def test_restart_reuses_supervisor_owned_socket(tmp_path: Path) -> None:
@@ -222,7 +221,6 @@ def test_restart_reuses_supervisor_owned_socket(tmp_path: Path) -> None:
     finally:
         sys.path.remove(str(tmp_path))
 
-
 @pytest.mark.system
 @pytest.mark.medium
 def test_failed_startup_can_recover_without_rebinding(tmp_path: Path) -> None:
@@ -252,7 +250,6 @@ def test_failed_startup_can_recover_without_rebinding(tmp_path: Path) -> None:
     finally:
         sys.path.remove(str(tmp_path))
 
-
 @pytest.mark.system
 @pytest.mark.medium
 def test_ready_is_reported_only_after_lifespan_startup(tmp_path: Path) -> None:
@@ -269,7 +266,6 @@ def test_ready_is_reported_only_after_lifespan_startup(tmp_path: Path) -> None:
             assert supervisor.state.child.status is ChildStatus.READY
     finally:
         sys.path.remove(str(tmp_path))
-
 
 @pytest.mark.system
 @pytest.mark.medium
@@ -296,7 +292,6 @@ def test_shutdown_is_bounded_when_lifespan_hangs(tmp_path: Path) -> None:
     finally:
         sys.path.remove(str(tmp_path))
 
-
 @pytest.mark.system
 @pytest.mark.medium
 def test_control_plane_survives_application_child_restart(tmp_path: Path) -> None:
@@ -320,7 +315,6 @@ def test_control_plane_survives_application_child_restart(tmp_path: Path) -> Non
             assert _control_health(control_address, control_token)["generation"] == 2
     finally:
         sys.path.remove(str(tmp_path))
-
 
 @pytest.mark.system
 @pytest.mark.medium
@@ -351,7 +345,6 @@ def test_html_response_injects_control_client_and_tracks_browser_generation(tmp_
             assert b'data-kyth-generation="2"' in updated_body
     finally:
         sys.path.remove(str(tmp_path))
-
 
 @pytest.mark.system
 @pytest.mark.medium
@@ -389,7 +382,6 @@ def test_restart_publishes_reload_only_after_new_generation_is_ready(tmp_path: P
             events.close()
     finally:
         sys.path.remove(str(tmp_path))
-
 
 @pytest.mark.system
 @pytest.mark.medium
@@ -465,8 +457,6 @@ def test_known_direct_html_change_reloads_only_affected_view(tmp_path: Path) -> 
             about_events.close()
     finally:
         sys.path.remove(str(tmp_path))
-
-
 
 @pytest.mark.system
 @pytest.mark.medium

@@ -10,7 +10,6 @@ from kyth.invalidation import (
 )
 from kyth.model import BrowserResource, BrowserResourceKind
 
-
 @pytest.mark.unit
 @pytest.mark.small
 def test_known_direct_output_reloads_only_affected_and_unknown_views() -> None:
@@ -32,7 +31,6 @@ def test_known_direct_output_reloads_only_affected_and_unknown_views() -> None:
     assert decision.current_view_ids == ("home",)
     assert decision.reason == "known-direct-output"
 
-
 @pytest.mark.unit
 @pytest.mark.small
 def test_known_inactive_output_does_not_reload_unrelated_direct_views() -> None:
@@ -53,7 +51,6 @@ def test_known_inactive_output_does_not_reload_unrelated_direct_views() -> None:
     assert decision.reload_view_ids == ()
     assert decision.current_view_ids == ("about", "home")
 
-
 @pytest.mark.unit
 @pytest.mark.small
 def test_unknown_browser_dependency_falls_back_to_all_active_views() -> None:
@@ -69,8 +66,6 @@ def test_unknown_browser_dependency_falls_back_to_all_active_views() -> None:
     assert decision.reload_view_ids == ("dynamic", "home")
     assert decision.current_view_ids == ()
     assert decision.reason == "ambiguous-browser-dependency"
-
-
 
 @pytest.mark.unit
 @pytest.mark.small
@@ -104,7 +99,6 @@ def test_direct_stylesheet_change_uses_css_update_for_complete_view() -> None:
     ]
     assert decision.current_view_ids == ("other",)
 
-
 @pytest.mark.unit
 @pytest.mark.small
 def test_observed_only_resource_and_incomplete_view_reload_conservatively() -> None:
@@ -133,7 +127,6 @@ def test_observed_only_resource_and_incomplete_view_reload_conservatively() -> N
         ("observed", BrowserActionKind.RELOAD),
     ]
     assert decision.current_view_ids == ()
-
 
 @pytest.mark.unit
 @pytest.mark.small
@@ -171,7 +164,6 @@ def test_mixed_css_and_image_changes_collapse_to_one_reload_per_view() -> None:
         ("view", BrowserActionKind.RELOAD)
     ]
 
-
 @pytest.mark.unit
 @pytest.mark.small
 def test_unknown_resource_change_keeps_phase_4_full_reload_fallback() -> None:
@@ -191,8 +183,6 @@ def test_unknown_resource_change_keeps_phase_4_full_reload_fallback() -> None:
         ("second", BrowserActionKind.RELOAD),
     ]
     assert decision.current_view_ids == ()
-
-
 
 @pytest.mark.unit
 @pytest.mark.small
