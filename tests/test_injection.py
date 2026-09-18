@@ -46,11 +46,12 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
             }
         )
 
+    fixture_token = "-".join(("fixture", "token"))
     middleware = HTMLInjectionMiddleware(
         app,
         InjectionConfig(
             control_url="http://127.0.0.1:9001",
-            token="secret-token",
+            token=fixture_token,
             generation=7,
         ),
     )
@@ -69,7 +70,7 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
     start, body_message = sent
     body = body_message["body"]
     assert isinstance(body, bytes)
-    assert b"/client.js?token=secret-token" in body
+    assert f"/client.js?token={fixture_token}".encode() in body
     assert b'data-kyth-generation="7"' in body
     assert b"data-kyth-render-id=" in body
     assert body.index(b"<script ") < body.index(b"</body>")
