@@ -410,7 +410,7 @@ class Supervisor:
     def _refresh_changed_manifests(self, changed_paths: tuple[Path, ...]) -> None:
         try:
             reloaded = self._generated.reload_changed(changed_paths)
-        except ManifestError as exc:
+        except (ManifestError, TypeError) as exc:
             logger.error("generated dependency manifest reload failed: %s", exc)
             return
         if reloaded:

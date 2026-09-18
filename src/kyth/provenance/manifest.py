@@ -44,17 +44,20 @@ def load_manifest(path: Path) -> DependencyManifest:
         raise ManifestError(msg) from exc
     if not isinstance(raw, dict):
         msg = "manifest root must be a JSON object"
-        raise ManifestError(msg)
+        raise TypeError(msg)
 
     version = raw.get("version")
-    if not isinstance(version, int) or isinstance(version, bool) or version != MANIFEST_VERSION:
+    if not isinstance(version, int) or isinstance(version, bool):
+        msg = "manifest version must be an integer"
+        raise TypeError(msg)
+    if version != MANIFEST_VERSION:
         msg = f"unsupported manifest version: {version!r}"
         raise ManifestError(msg)
 
     raw_outputs = raw.get("outputs")
     if not isinstance(raw_outputs, list):
         msg = "manifest outputs must be a JSON array"
-        raise ManifestError(msg)
+        raise TypeError(msg)
     if len(raw_outputs) > MAX_MANIFEST_OUTPUTS:
         msg = "manifest contains too many outputs"
         raise ManifestError(msg)
@@ -160,15 +163,15 @@ def _build_indexes(
 def _parse_output(value: object, *, base: Path) -> ManifestOutput:
     if not isinstance(value, dict):
         msg = "each manifest output must be a JSON object"
-        raise ManifestError(msg)
+        raise TypeError(msg)
     output_value = value.get("output")
     sources_value = value.get("sources")
     if not isinstance(output_value, str):
         msg = "manifest output path must be a string"
-        raise ManifestError(msg)
+        raise TypeError(msg)
     if not isinstance(sources_value, list):
         msg = "manifest output sources must be a JSON array"
-        raise ManifestError(msg)
+        raise TypeError(msg)
     if len(sources_value) > MAX_SOURCES_PER_OUTPUT:
         msg = "manifest output contains too many sources"
         raise ManifestError(msg)
@@ -182,7 +185,7 @@ def _parse_output(value: object, *, base: Path) -> ManifestOutput:
     for source_value in sources_value:
         if not isinstance(source_value, str):
             msg = "manifest source path must be a string"
-            raise ManifestError(msg)
+            raise TypeError(msg)
         sources.append(_resolve_relative_path(source_value, base=base, label="source"))
     if not sources:
         msg = f"manifest output must declare at least one source: {output_value!r}"
