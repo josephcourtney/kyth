@@ -20,8 +20,11 @@ Items should be categorized under these headings:
 ### Added
 
 - add the Phase 1 development supervisor with a persistent public socket, restartable ASGI child, explicit readiness reporting, bounded shutdown, failure recovery, generation state, and initial CLI
+- add Phase 2 filesystem observation with `watchfiles`, configurable watch/ignore paths, deterministic change batches, default restart classification, restart coalescing, and concise change-decision logging
 
 ### Changed
+
+- replace the unused `watchdog` development dependency with the runtime `watchfiles` dependency used by Kyth
 
 ### Deprecated
 

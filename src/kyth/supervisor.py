@@ -3,11 +3,14 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
-from kyth.model import ChildState, ChildStatus, DevelopmentState
+from kyth.changes import ChangeSet, classify_batch
+from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch
 from kyth.process.manager import ChildProcess
 from kyth.process.socket import DEFAULT_BACKLOG, bind_listening_socket
+from kyth.watcher import BatchSource, FileWatcher, WatcherConfig
 
 if TYPE_CHECKING:
     import socket
@@ -26,6 +29,10 @@ class SupervisorConfig:
     startup_timeout: float = 10.0
     shutdown_timeout: float = 2.0
     terminate_timeout: float = 1.0
+    watch_roots: tuple[Path, ...] = ()
+    ignored_paths: tuple[Path, ...] = ()
+    watch_debounce_ms: int = 300
+    watch_step_ms: int = 50
 
 
 class Supervisor:
@@ -116,10 +123,23 @@ class Supervisor:
             child=ChildState(ChildStatus.FAILED, error="application child exited", exit_code=exit_code),
         )
 
-    def run_forever(self, *, poll_interval: float = 0.1) -> None:
-        while True:
-            self.poll()
-            time.sleep(poll_interval)
+    def run_forever(self, *, poll_interval: float = 0.1, batch_source: BatchSource | None = None) -> None:
+        source = batch_source or self._create_watcher()
+        source.start()
+        try:
+            if self._child is None:
+                self.start_child()
+                pending = source.drain_pending()
+                if pending is not None:
+                    self._handle_change_cycle(pending, source)
+
+            while True:
+                self.poll()
+                batch = source.next_batch(timeout=poll_interval)
+                if batch is not None:
+                    self._handle_change_cycle(batch, source)
+        finally:
+            source.close()
 
     def close(self) -> None:
         if self._child is not None:
@@ -142,6 +162,45 @@ class Supervisor:
         """Release the child and listening socket when leaving the context."""
         self.close()
 
+    def _handle_change_cycle(self, initial_batch: FileBatch, source: BatchSource) -> None:
+        batch = initial_batch
+        while True:
+            changes = classify_batch(batch)
+            self._log_change_set(changes)
+            if not changes.requires_restart:
+                return
+
+            self.restart_child()
+            pending = source.drain_pending()
+            if pending is None:
+                return
+            batch = pending
+
+    def _create_watcher(self) -> FileWatcher:
+        roots = self.config.watch_roots or (Path.cwd(),)
+        return FileWatcher(
+            WatcherConfig(
+                roots=roots,
+                ignored_paths=self.config.ignored_paths,
+                debounce_ms=self.config.watch_debounce_ms,
+                step_ms=self.config.watch_step_ms,
+            )
+        )
+
+    def _log_change_set(self, changes: ChangeSet) -> None:
+        rendered = ", ".join(_display_path(path) for path in changes.batch.paths)
+        if changes.requires_restart:
+            logger.info("%s changed -> restart", rendered)
+            if changes.browser_paths:
+                logger.info("browser-facing changes in this batch are deferred until the browser control phase")
+            return
+
+        if changes.browser_paths:
+            logger.info("%s changed -> browser-facing change; no Phase 2 browser action", rendered)
+            return
+
+        logger.info("%s changed -> no restart", rendered)
+
     def _stop_owned_child_if_needed(self) -> int | None:
         if self._child is None:
             return None
@@ -161,3 +220,10 @@ class Supervisor:
             msg = "supervisor socket is not open"
             raise RuntimeError(msg)
         return self._socket
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
