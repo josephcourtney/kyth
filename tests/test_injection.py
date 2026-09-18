@@ -9,7 +9,7 @@ from kyth.injection import HTMLInjectionMiddleware, InjectionConfig
 ASGIMessage = dict[str, Any]
 
 
-async def _receive() -> ASGIMessage:
+async def _receive() -> ASGIMessage:  # noqa: RUF029 - ASGI receive callbacks are async by contract
     return {"type": "http.request", "body": b"", "more_body": False}
 
 
@@ -20,7 +20,7 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
     received_scope: dict[str, Any] = {}
     sent: list[ASGIMessage] = []
 
-    async def capture(message: ASGIMessage) -> None:
+    async def capture(message: ASGIMessage) -> None:  # noqa: RUF029 - ASGI send callbacks are async by contract
         sent.append(message)
 
     async def app(scope, _receive, send) -> None:
@@ -88,7 +88,7 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
 async def test_streaming_html_passes_through_without_injection() -> None:
     sent: list[ASGIMessage] = []
 
-    async def capture(message: ASGIMessage) -> None:
+    async def capture(message: ASGIMessage) -> None:  # noqa: RUF029 - ASGI send callbacks are async by contract
         sent.append(message)
 
     async def app(_scope, _receive, send) -> None:
@@ -131,7 +131,7 @@ async def test_streaming_html_passes_through_without_injection() -> None:
 async def test_explicitly_compressed_html_passes_through() -> None:
     sent: list[ASGIMessage] = []
 
-    async def capture(message: ASGIMessage) -> None:
+    async def capture(message: ASGIMessage) -> None:  # noqa: RUF029 - ASGI send callbacks are async by contract
         sent.append(message)
 
     async def app(_scope, _receive, send) -> None:
