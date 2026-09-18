@@ -5,10 +5,10 @@ from queue import Queue
 from threading import Lock
 from typing import TYPE_CHECKING
 
+from kyth.protocol import ControlEvent
+
 if TYPE_CHECKING:
     from collections.abc import Collection
-
-from kyth.protocol import ControlEvent
 
 SubscriberQueue = Queue[ControlEvent | None]
 
