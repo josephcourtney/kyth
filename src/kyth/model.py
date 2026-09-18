@@ -20,6 +20,20 @@ class FileOperation(StrEnum):
     DELETED = "deleted"
 
 
+class BrowserResourceKind(StrEnum):
+    STYLESHEET = "stylesheet"
+    IMAGE = "image"
+    FONT = "font"
+    JAVASCRIPT = "javascript"
+    OBSERVED = "observed"
+
+
+@dataclass(frozen=True, slots=True)
+class BrowserResource:
+    url: str
+    kind: BrowserResourceKind
+
+
 @dataclass(frozen=True, slots=True)
 class ChildState:
     status: ChildStatus = ChildStatus.ABSENT

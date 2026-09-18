@@ -2,7 +2,13 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
-from kyth.provenance import DirectOutputIndex, direct_document_relative_path
+from kyth.model import BrowserResource, BrowserResourceKind
+from kyth.provenance import (
+    DirectOutputIndex,
+    DirectResourceIndex,
+    direct_document_relative_path,
+    direct_resource_relative_path,
+)
 
 
 @pytest.mark.unit
@@ -57,3 +63,79 @@ def test_direct_output_index_rejects_ambiguous_roots(tmp_path: Path) -> None:
 
     assert provenance.output_views == {}
     assert provenance.known_outputs == frozenset()
+
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_direct_resource_relative_path_accepts_explicit_resource_urls() -> None:
+    assert direct_resource_relative_path("http://127.0.0.1:8000/static/site.css?v=1") == PurePosixPath(
+        "static/site.css"
+    )
+    assert direct_resource_relative_path("http://127.0.0.1:8000/static/") is None
+    assert direct_resource_relative_path("http://127.0.0.1:8000/%2e%2e/site.css") is None
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_direct_resource_index_maps_resources_and_snapshot_completeness(tmp_path: Path) -> None:
+    stylesheet = tmp_path / "static" / "site.css"
+    stylesheet.parent.mkdir()
+    stylesheet.write_text("body {}", encoding="utf-8")
+
+    provenance = DirectResourceIndex((tmp_path,))
+    provenance.reconcile(
+        {
+            "complete": (
+                BrowserResource(
+                    "http://127.0.0.1:8000/static/site.css",
+                    BrowserResourceKind.STYLESHEET,
+                ),
+            ),
+            "incomplete": (
+                BrowserResource(
+                    "http://127.0.0.1:8000/static/site.css?v=1",
+                    BrowserResourceKind.OBSERVED,
+                ),
+            ),
+        },
+        complete_view_ids=("complete",),
+    )
+
+    assert provenance.known_resources == frozenset({stylesheet.resolve()})
+    assert provenance.complete_view_ids == frozenset({"complete"})
+    assert provenance.resource_views[stylesheet.resolve()] == {
+        "complete": (
+            BrowserResource(
+                "http://127.0.0.1:8000/static/site.css",
+                BrowserResourceKind.STYLESHEET,
+            ),
+        ),
+        "incomplete": (
+            BrowserResource(
+                "http://127.0.0.1:8000/static/site.css?v=1",
+                BrowserResourceKind.OBSERVED,
+            ),
+        ),
+    }
+
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_direct_resource_index_retains_known_mapping_after_file_disappears(tmp_path: Path) -> None:
+    stylesheet = tmp_path / "site.css"
+    stylesheet.write_text("body {}", encoding="utf-8")
+    resource = BrowserResource(
+        "http://127.0.0.1:8000/site.css",
+        BrowserResourceKind.STYLESHEET,
+    )
+
+    provenance = DirectResourceIndex((tmp_path,))
+    provenance.reconcile({"view": (resource,)}, complete_view_ids=("view",))
+    stylesheet.unlink()
+    provenance.reconcile({"view": (resource,)}, complete_view_ids=("view",))
+
+    assert provenance.resource_views == {
+        stylesheet.resolve(): {"view": (resource,)},
+    }

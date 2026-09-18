@@ -34,3 +34,11 @@ class ControlEvent:
     @classmethod
     def reload(cls, generation: int, *, reason: str) -> ControlEvent:
         return cls(ControlEventKind.RELOAD, generation, {"reason": reason})
+
+    @classmethod
+    def css_update(cls, generation: int, *, resources: tuple[str, ...]) -> ControlEvent:
+        return cls(ControlEventKind.CSS_UPDATE, generation, {"resources": list(resources)})
+
+    @classmethod
+    def asset_update(cls, generation: int, *, resources: tuple[str, ...]) -> ControlEvent:
+        return cls(ControlEventKind.ASSET_UPDATE, generation, {"resources": list(resources)})

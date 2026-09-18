@@ -171,7 +171,7 @@ The SSE stream supports automatic browser reconnection and is intentionally not 
 Phase 3 defines the control HTTP surface as:
 
 - `GET /events?token=<session-token>&view_id=<view-id>` opens the SSE stream and immediately emits a `sync` event for the current generation;
-- `POST /views?token=<session-token>` registers or updates one browser view using a JSON object containing `view_id`, `url`, `generation`, and optional `render_id`;
+- `POST /views?token=<session-token>` registers or updates one browser view using a JSON object containing `view_id`, `url`, `generation`, optional `render_id`, and Phase 6 resource snapshot fields `resources`/`resources_complete`;
 - `OPTIONS /views?token=<session-token>` supports the cross-origin registration preflight;
 - `GET /client.js?token=<session-token>` serves the external browser client with no-store caching;
 - `GET /health?token=<session-token>` exposes minimal development diagnostics for the current generation and active-view count.
@@ -207,21 +207,38 @@ V1 may preserve scroll position and focus as a generic convenience, but it must 
 
 ## 13. CSS update behavior
 
-For an affected external stylesheet currently linked by the document, the browser client creates a generation-specific replacement request, waits for successful load, and then removes or supersedes the previous stylesheet reference.
+Phase 6 registers same-origin browser resource usage with each view. The client combines direct DOM references with Resource Timing entries. Direct references identify resources that may be mutated safely; timing entries broaden dependency detection for resources such as imports or dynamically loaded files.
 
-If the affected stylesheet cannot be mapped unambiguously, is inline, or fails to load, the client falls back to full reload.
+The client treats the resource snapshot as complete only while the Resource Timing buffer is known not to have filled and the bounded registration payload contains the full observed set. A view with an incomplete snapshot remains conservative for resource changes.
 
-A CSS update should not reset document, JavaScript, or form state.
+For an affected external stylesheet directly represented by an enabled `<link rel="stylesheet">`, the supervisor emits one targeted `css-update` event containing all changed stylesheet URLs for that view. The client:
+
+1. clones each affected link;
+2. gives the replacement a generation-specific cache-busting URL;
+3. inserts the replacement adjacent to the old link;
+4. waits for every replacement stylesheet to load successfully;
+5. removes the old links only after all replacements load;
+6. advances its generation and re-registers the view.
+
+If mapping is ambiguous, the stylesheet was only observed rather than directly replaceable, the snapshot is incomplete, or any replacement fails to load, the affected view falls back to full reload.
+
+A CSS update does not reset document, JavaScript, form, focus, or scroll state.
 
 ## 14. Asset update behavior
 
-V1 may directly cache-bust images, SVG resources, fonts, or similar assets only when the active DOM/resource relationship is clear and replacement is safe.
+Phase 6 directly cache-busts only image resources for which replacement is generic and observable. The zero-touch client currently treats ordinary `<img src>` elements without `srcset` or a `<picture>` parent as safely replaceable. SVG files loaded through such image elements use the same path.
 
-Otherwise the supervisor/client falls back to full reload for affected views.
+For an affected directly replaceable image, the supervisor emits one targeted `asset-update` event. The client assigns generation-specific URLs, waits for all affected images to load, and then advances/re-registers the view.
 
-Narrow asset replacement is an optimization; it must never reduce correctness.
+Resource Timing may show that a view consumes an image through CSS, `srcset`, or another mechanism even when it is not safely replaceable. Such an observed-only dependency receives a targeted full reload rather than a narrow asset update.
+
+Fonts are tracked when visible through direct preload/resource observation, but V1 does not attempt to mutate an already-applied font face generically; a relevant font change reloads the affected view. The same conservative rule applies to unsupported asset forms.
+
+A failed narrow update always falls back to full reload. Narrow replacement is an optimization and never marks the view current until the browser confirms success by re-registering at the new generation.
 
 ## 15. JavaScript behavior
+
+Phase 6 records directly loaded same-origin scripts and Resource Timing script entries for dependency targeting, but JavaScript remains outside Kyth's narrow-update mechanism.
 
 If relevant plain/generated JavaScript changes and no external HMR owner is configured, affected views receive a full reload.
 
@@ -269,7 +286,7 @@ Browser invalidation and presentation are separate decisions:
 - if a changed path is not a known direct output, Kyth falls back to the Phase 4 application-wide reload;
 - if a known direct output changes while no active view depends on it and all active views have known unrelated direct outputs, no browser reload occurs.
 
-Targeted events are delivered by view identity through the persistent SSE broker. The global development generation still advances for a coherent browser-facing change, but a generation advance alone does not imply that every view is stale. The control registry records unaffected views as valid through that generation. On SSE reconnect, `sync` therefore carries a per-view `reload_required` decision so an unrelated prior change does not cause a delayed reload.
+Targeted events are delivered by view identity through the persistent SSE broker. The global development generation still advances for a coherent browser-facing change, but a generation advance alone does not imply that every view is stale. The control registry records views requiring no browser-side action as valid through that generation. Views receiving reload or narrow resource updates remain stale until navigation or successful resource mutation re-registers them. On SSE reconnect, `sync` therefore carries a per-view `reload_required` decision so a missed/failed action recovers conservatively while an unrelated prior change does not cause a delayed reload.
 
 For generated sites, browser synchronization normally waits for the generated output to change rather than reacting immediately to its source input.
 

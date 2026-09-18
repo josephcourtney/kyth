@@ -9,6 +9,7 @@ import pytest
 
 from kyth.control import ControlService
 from kyth.control.sse import encode_sse
+from kyth.model import BrowserResourceKind
 from kyth.protocol import ControlEvent
 
 LOOPBACK_ORIGIN = "http://127.0.0.1:8000"
@@ -166,4 +167,50 @@ def test_control_service_serves_token_gated_browser_client() -> None:
         assert "new EventSource" in body
         assert "fetch(url, {" in body
         assert 'addEventListener("reload"' in body
+        assert 'addEventListener("css-update"' in body
+        assert 'addEventListener("asset-update"' in body
+        assert "resources_complete" in body
         connection.close()
+
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_view_registration_accepts_resource_snapshot() -> None:
+    with ControlService(generation=2) as service:
+        connection = http.client.HTTPConnection(*service.address, timeout=2.0)
+        body = json.dumps({
+            "view_id": "resource-view",
+            "url": f"{LOOPBACK_ORIGIN}/",
+            "generation": 2,
+            "render_id": None,
+            "resources": [
+                {
+                    "url": f"{LOOPBACK_ORIGIN}/site.css",
+                    "kind": "stylesheet",
+                },
+                {
+                    "url": f"{LOOPBACK_ORIGIN}/logo.svg",
+                    "kind": "image",
+                },
+            ],
+            "resources_complete": True,
+        })
+        connection.request(
+            "POST",
+            _view_path(service),
+            body=body,
+            headers={"Content-Type": "application/json", "Origin": LOOPBACK_ORIGIN},
+        )
+        response = connection.getresponse()
+        assert response.status == HTTPStatus.OK
+        response.read()
+        connection.close()
+
+        view = service.views.get("resource-view")
+        assert view is not None
+        assert view.resources_complete is True
+        assert [(resource.url, resource.kind) for resource in view.resources] == [
+            (f"{LOOPBACK_ORIGIN}/logo.svg", BrowserResourceKind.IMAGE),
+            (f"{LOOPBACK_ORIGIN}/site.css", BrowserResourceKind.STYLESHEET),
+        ]

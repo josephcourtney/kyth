@@ -128,18 +128,26 @@ def _register_view(
     view_id: str,
     url: str,
     generation: int,
+    resources: list[dict[str, str]] | None = None,
+    resources_complete: bool | None = None,
 ) -> None:
+    payload: dict[str, object] = {
+        "view_id": view_id,
+        "url": url,
+        "generation": generation,
+        "render_id": None,
+    }
+    if resources is not None:
+        payload["resources"] = resources
+    if resources_complete is not None:
+        payload["resources_complete"] = resources_complete
+
     connection = http.client.HTTPConnection(*address, timeout=2.0)
     try:
         connection.request(
             "POST",
             f"/views?token={token}",
-            body=json.dumps({
-                "view_id": view_id,
-                "url": url,
-                "generation": generation,
-                "render_id": None,
-            }),
+            body=json.dumps(payload),
             headers={
                 "Content-Type": "application/json",
                 "Origin": urlsplit_origin(url),
@@ -455,5 +463,85 @@ def test_known_direct_html_change_reloads_only_affected_view(tmp_path: Path) -> 
             home_events.close()
             about_stream.close()
             about_events.close()
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_direct_css_change_emits_targeted_css_update(tmp_path: Path) -> None:
+    module = tmp_path / "css_app.py"
+    stylesheet = tmp_path / "site.css"
+    other_stylesheet = tmp_path / "other.css"
+    stylesheet.write_text("body { color: red; }", encoding="utf-8")
+    other_stylesheet.write_text("body { color: blue; }", encoding="utf-8")
+    _write_html_app(module, body="<html><body>served</body></html>")
+    sys.path.insert(0, str(tmp_path))
+    try:
+        config = SupervisorConfig(
+            "css_app:app",
+            port=0,
+            startup_timeout=5.0,
+            shutdown_timeout=1.0,
+            watch_roots=(tmp_path,),
+        )
+        with Supervisor(config) as supervisor:
+            assert supervisor.start_child()
+            app_origin = f"http://{supervisor.address[0]}:{supervisor.address[1]}"
+            generation = supervisor.state.generation
+            _register_view(
+                supervisor.control_address,
+                supervisor.control_token,
+                view_id="styled",
+                url=f"{app_origin}/",
+                generation=generation,
+                resources=[{"url": f"{app_origin}/site.css", "kind": "stylesheet"}],
+                resources_complete=True,
+            )
+            _register_view(
+                supervisor.control_address,
+                supervisor.control_token,
+                view_id="other",
+                url=f"{app_origin}/",
+                generation=generation,
+                resources=[{"url": f"{app_origin}/other.css", "kind": "stylesheet"}],
+                resources_complete=True,
+            )
+
+            styled_events = http.client.HTTPConnection(*supervisor.control_address, timeout=2.0)
+            styled_events.request(
+                "GET",
+                f"/events?token={supervisor.control_token}&view_id=styled",
+                headers={"Origin": app_origin},
+            )
+            styled_stream = styled_events.getresponse()
+            _read_sse_event(styled_stream)
+
+            other_events = http.client.HTTPConnection(*supervisor.control_address, timeout=2.0)
+            other_events.request(
+                "GET",
+                f"/events?token={supervisor.control_token}&view_id=other",
+                headers={"Origin": app_origin},
+            )
+            other_stream = other_events.getresponse()
+            _read_sse_event(other_stream)
+
+            stylesheet.write_text("body { color: green; }", encoding="utf-8")
+            supervisor._reload_for_browser_change((stylesheet,))
+
+            styled_event = _read_sse_event(styled_stream)
+            other_event = _read_sse_event(other_stream)
+
+            assert styled_event["event"] == "css-update"
+            assert styled_event["id"] == "2"
+            assert f'"resources":["{app_origin}/site.css"]' in styled_event["data"]
+            assert other_event["event"] == "sync"
+            assert '"reload_required":false' in other_event["data"]
+
+            styled_stream.close()
+            styled_events.close()
+            other_stream.close()
+            other_events.close()
     finally:
         sys.path.remove(str(tmp_path))

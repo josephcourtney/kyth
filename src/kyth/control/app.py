@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlsplit
 from kyth.control.client import CLIENT_JAVASCRIPT
 from kyth.control.sse import EventBroker, SubscriberQueue, encode_sse
 from kyth.control.views import BrowserView, ViewRegistry
+from kyth.model import BrowserResource, BrowserResourceKind
 from kyth.protocol import ControlEvent
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MAX_REQUEST_BODY = 64 * 1024
+MAX_REGISTERED_RESOURCES = 256
 DEFAULT_HEARTBEAT_SECONDS = 15.0
 
 
@@ -108,6 +110,8 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             url = _required_string(payload, "url")
             generation = _required_nonnegative_int(payload, "generation")
             render_id = _optional_string(payload, "render_id")
+            resources = _resources(payload)
+            resources_complete = _optional_bool(payload, "resources_complete")
         except ValueError as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)}, origin=origin)
             return
@@ -117,6 +121,8 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             url=url,
             generation=generation,
             render_id=render_id,
+            resources=resources,
+            resources_complete=resources_complete,
         )
         self._send_json(HTTPStatus.OK, _view_payload(view), origin=origin)
 
@@ -413,6 +419,49 @@ def _optional_string(payload: dict[str, object], key: str) -> str | None:
     return value
 
 
+def _optional_bool(payload: dict[str, object], key: str) -> bool | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        msg = f"{key} must be a boolean or null"
+        raise ValueError(msg)
+    return value
+
+
+def _resources(payload: dict[str, object]) -> tuple[BrowserResource, ...]:
+    value = payload.get("resources")
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        msg = "resources must be a JSON array"
+        raise ValueError(msg)
+    if len(value) > MAX_REGISTERED_RESOURCES:
+        msg = "resources contains too many entries"
+        raise ValueError(msg)
+
+    resources: set[BrowserResource] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            msg = "each resource must be a JSON object"
+            raise ValueError(msg)
+        url = item.get("url")
+        kind = item.get("kind")
+        if not isinstance(url, str) or not url:
+            msg = "resource url must be a non-empty string"
+            raise ValueError(msg)
+        if not isinstance(kind, str):
+            msg = "resource kind must be a string"
+            raise ValueError(msg)
+        try:
+            resource_kind = BrowserResourceKind(kind)
+        except ValueError as exc:
+            msg = f"unsupported resource kind: {kind}"
+            raise ValueError(msg) from exc
+        resources.add(BrowserResource(url=url, kind=resource_kind))
+    return tuple(sorted(resources, key=lambda resource: (resource.url, resource.kind.value)))
+
+
 def _required_nonnegative_int(payload: dict[str, object], key: str) -> int:
     value = payload.get(key)
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
@@ -427,4 +476,9 @@ def _view_payload(view: BrowserView) -> dict[str, object]:
         "url": view.url,
         "generation": view.generation,
         "render_id": view.render_id,
+        "resources": [
+            {"url": resource.url, "kind": resource.kind.value}
+            for resource in view.resources
+        ],
+        "resources_complete": view.resources_complete,
     }

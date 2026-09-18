@@ -19,6 +19,19 @@ CLIENT_JAVASCRIPT = (
 
   const VIEW_KEY = "__kyth_view_id__";
   const PENDING_GENERATION_KEY = "__kyth_pending_generation__";
+  const DEFAULT_RESOURCE_TIMING_CAPACITY = 250;
+  const RESOURCE_TIMING_CAPACITY = 5000;
+  const MAX_REGISTERED_RESOURCES = 256;
+  const CACHE_BUST_KEY = "__kyth_generation__";
+  const RESOURCE_REGISTRATION_DELAY_MS = 50;
+
+  let resourceSnapshotComplete =
+    performance.getEntriesByType("resource").length < DEFAULT_RESOURCE_TIMING_CAPACITY;
+  performance.setResourceTimingBufferSize(RESOURCE_TIMING_CAPACITY);
+  performance.addEventListener("resourcetimingbufferfull", () => {
+    resourceSnapshotComplete = false;
+    void registerView();
+  });
 
   function randomId() {
     if (typeof crypto.randomUUID === "function") {
@@ -53,6 +66,101 @@ CLIENT_JAVASCRIPT = (
     }
   }
 
+  function absoluteResourceUrl(value) {
+    try {
+      const url = new URL(value, location.href);
+      if (url.origin !== location.origin) {
+        return null;
+      }
+      url.hash = "";
+      return url.href;
+    } catch {
+      return null;
+    }
+  }
+
+  function resourceKey(value) {
+    const absolute = absoluteResourceUrl(value);
+    if (absolute === null) {
+      return null;
+    }
+    const url = new URL(absolute);
+    url.search = "";
+    return url.href;
+  }
+
+  function addResource(resources, value, kind, direct = false) {
+    const url = absoluteResourceUrl(value);
+    const key = resourceKey(value);
+    if (url === null || key === null) {
+      return;
+    }
+    const current = resources.get(key);
+    if (current === undefined || direct) {
+      resources.set(key, {url, kind});
+    }
+  }
+
+  function safeImageElements() {
+    return Array.from(document.querySelectorAll("img[src]")).filter(
+      (element) =>
+        element instanceof HTMLImageElement &&
+        !element.srcset &&
+        element.closest("picture") === null
+    );
+  }
+
+  function resourceSnapshot() {
+    const resources = new Map();
+
+    for (const entry of performance.getEntriesByType("resource")) {
+      if (!(entry instanceof PerformanceResourceTiming)) {
+        continue;
+      }
+      let kind = "observed";
+      if (entry.initiatorType === "script") {
+        kind = "javascript";
+      } else if (entry.initiatorType === "img") {
+        kind = "image";
+      }
+      addResource(resources, entry.name, kind);
+    }
+
+    for (const link of document.querySelectorAll('link[rel~="stylesheet"][href]')) {
+      if (link instanceof HTMLLinkElement && !link.disabled) {
+        addResource(resources, link.href, "stylesheet", true);
+      }
+    }
+
+    for (const image of safeImageElements()) {
+      addResource(resources, image.src, "image", true);
+    }
+
+    for (const preload of document.querySelectorAll('link[rel~="preload"][as="font"][href]')) {
+      if (preload instanceof HTMLLinkElement) {
+        addResource(resources, preload.href, "font", true);
+      }
+    }
+
+    for (const source of document.querySelectorAll("script[src]")) {
+      if (source instanceof HTMLScriptElement) {
+        addResource(resources, source.src, "javascript", true);
+      }
+    }
+
+    const values = Array.from(resources.values()).sort((left, right) =>
+      left.url.localeCompare(right.url)
+    );
+    const complete =
+      document.readyState === "complete" &&
+      resourceSnapshotComplete &&
+      values.length <= MAX_REGISTERED_RESOURCES;
+    return {
+      resources: values.slice(0, MAX_REGISTERED_RESOURCES),
+      complete,
+    };
+  }
+
   let viewId = sessionGet(VIEW_KEY);
   if (!viewId) {
     viewId = randomId();
@@ -68,6 +176,8 @@ CLIENT_JAVASCRIPT = (
 
   let reloading = false;
   let awaitingSync = true;
+  let actionChain = Promise.resolve();
+  let registrationTimer = null;
 
   function payloadFromEvent(event) {
     try {
@@ -79,6 +189,19 @@ CLIENT_JAVASCRIPT = (
 
   function generationFromPayload(payload) {
     return payload === null ? Number.NaN : Number(payload.generation);
+  }
+
+  function eventResources(payload) {
+    const resources = payload?.data?.resources;
+    return Array.isArray(resources) && resources.every((value) => typeof value === "string")
+      ? resources
+      : null;
+  }
+
+  function cacheBust(value, generation) {
+    const url = new URL(value, location.href);
+    url.searchParams.set(CACHE_BUST_KEY, String(generation));
+    return url.href;
   }
 
   function reloadForGeneration(generation) {
@@ -95,6 +218,7 @@ CLIENT_JAVASCRIPT = (
   }
 
   async function registerView() {
+    const snapshot = resourceSnapshot();
     const url = new URL("/views", control);
     url.searchParams.set("token", token);
     try {
@@ -106,11 +230,121 @@ CLIENT_JAVASCRIPT = (
           url: location.href,
           generation: pageGeneration,
           render_id: renderId,
+          resources: snapshot.resources,
+          resources_complete: snapshot.complete,
         }),
       });
+      return true;
     } catch {
-      return;
+      return false;
     }
+  }
+
+  function scheduleRegistration() {
+    if (registrationTimer !== null) {
+      clearTimeout(registrationTimer);
+    }
+    registrationTimer = setTimeout(() => {
+      registrationTimer = null;
+      void registerView();
+    }, RESOURCE_REGISTRATION_DELAY_MS);
+  }
+
+  async function replaceStylesheets(resources, generation) {
+    const targetKeys = new Set(resources.map(resourceKey).filter((value) => value !== null));
+    if (targetKeys.size !== resources.length) {
+      return false;
+    }
+
+    const links = Array.from(document.querySelectorAll('link[rel~="stylesheet"][href]')).filter(
+      (link) =>
+        link instanceof HTMLLinkElement &&
+        !link.disabled &&
+        targetKeys.has(resourceKey(link.href))
+    );
+    const matched = new Set(links.map((link) => resourceKey(link.href)));
+    if (matched.size !== targetKeys.size) {
+      return false;
+    }
+
+    const replacements = [];
+    try {
+      await Promise.all(
+        links.map(
+          (link) =>
+            new Promise((resolve, reject) => {
+              const replacement = link.cloneNode(false);
+              replacement.href = cacheBust(link.href, generation);
+              replacement.addEventListener("load", () => resolve(), {once: true});
+              replacement.addEventListener("error", () => reject(new Error("stylesheet update failed")), {
+                once: true,
+              });
+              replacements.push(replacement);
+              link.after(replacement);
+            })
+        )
+      );
+    } catch {
+      for (const replacement of replacements) {
+        replacement.remove();
+      }
+      return false;
+    }
+
+    for (const link of links) {
+      link.remove();
+    }
+    return true;
+  }
+
+  async function replaceImages(resources, generation) {
+    const targetKeys = new Set(resources.map(resourceKey).filter((value) => value !== null));
+    if (targetKeys.size !== resources.length) {
+      return false;
+    }
+
+    const images = safeImageElements().filter((image) => targetKeys.has(resourceKey(image.src)));
+    const matched = new Set(images.map((image) => resourceKey(image.src)));
+    if (matched.size !== targetKeys.size) {
+      return false;
+    }
+
+    const previous = new Map(images.map((image) => [image, image.src]));
+    try {
+      await Promise.all(
+        images.map(
+          (image) =>
+            new Promise((resolve, reject) => {
+              image.addEventListener("load", () => resolve(), {once: true});
+              image.addEventListener("error", () => reject(new Error("image update failed")), {
+                once: true,
+              });
+              image.src = cacheBust(image.src, generation);
+            })
+        )
+      );
+    } catch {
+      for (const [image, source] of previous) {
+        image.src = source;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  async function commitNarrowUpdate(generation) {
+    if (generation > pageGeneration) {
+      pageGeneration = generation;
+    }
+    await registerView();
+  }
+
+  function enqueue(action) {
+    actionChain = actionChain.then(async () => {
+      if (!reloading) {
+        await action();
+      }
+    });
   }
 
   function connectEvents() {
@@ -144,14 +378,63 @@ CLIENT_JAVASCRIPT = (
     });
 
     events.addEventListener("reload", (event) => {
-      reloadForGeneration(generationFromPayload(payloadFromEvent(event)));
+      const payload = payloadFromEvent(event);
+      enqueue(async () => reloadForGeneration(generationFromPayload(payload)));
+    });
+
+    events.addEventListener("css-update", (event) => {
+      const payload = payloadFromEvent(event);
+      enqueue(async () => {
+        const generation = generationFromPayload(payload);
+        const resources = eventResources(payload);
+        if (
+          resources === null ||
+          !Number.isFinite(generation) ||
+          generation <= pageGeneration ||
+          !(await replaceStylesheets(resources, generation))
+        ) {
+          reloadForGeneration(generation);
+          return;
+        }
+        await commitNarrowUpdate(generation);
+      });
+    });
+
+    events.addEventListener("asset-update", (event) => {
+      const payload = payloadFromEvent(event);
+      enqueue(async () => {
+        const generation = generationFromPayload(payload);
+        const resources = eventResources(payload);
+        if (
+          resources === null ||
+          !Number.isFinite(generation) ||
+          generation <= pageGeneration ||
+          !(await replaceImages(resources, generation))
+        ) {
+          reloadForGeneration(generation);
+          return;
+        }
+        await commitNarrowUpdate(generation);
+      });
     });
   }
 
-  registerView().finally(connectEvents);
-  addEventListener("pageshow", () => {
-    void registerView();
+  const mutationObserver = new MutationObserver(scheduleRegistration);
+  mutationObserver.observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["href", "src", "srcset", "rel", "as", "disabled"],
   });
+
+  if (typeof PerformanceObserver === "function") {
+    const performanceObserver = new PerformanceObserver(scheduleRegistration);
+    performanceObserver.observe({type: "resource", buffered: false});
+  }
+
+  registerView().finally(connectEvents);
+  addEventListener("load", scheduleRegistration, {once: true});
+  addEventListener("pageshow", scheduleRegistration);
 })();
 """.strip()
     + "\n"

@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection
 
+    from kyth.model import BrowserResource
+
 
 @dataclass(frozen=True, slots=True)
 class BrowserView:
@@ -16,6 +18,8 @@ class BrowserView:
     generation: int
     render_id: str | None
     last_seen: float
+    resources: tuple[BrowserResource, ...] = ()
+    resources_complete: bool | None = None
 
 
 class ViewRegistry:
@@ -43,9 +47,19 @@ class ViewRegistry:
         url: str,
         generation: int,
         render_id: str | None = None,
+        resources: tuple[BrowserResource, ...] = (),
+        resources_complete: bool | None = None,
     ) -> BrowserView:
         now = self._clock()
-        view = BrowserView(view_id, url, generation, render_id, now)
+        view = BrowserView(
+            view_id,
+            url,
+            generation,
+            render_id,
+            now,
+            resources,
+            resources_complete,
+        )
         with self._lock:
             self._views[view_id] = view
         return view

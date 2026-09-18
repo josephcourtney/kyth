@@ -25,13 +25,18 @@ Items should be categorized under these headings:
 - add Phase 4 transparent HTML injection, external browser client serving, per-tab registration, generation-aware reloads, CSP/header rewriting, and readiness-gated server-restart reload events
 - add acknowledged live-child generation updates so browser-facing changes can reload current content without restarting Python
 - add Phase 5 direct HTML output provenance, explicit invalidation decisions, targeted per-view SSE delivery, remembered inactive outputs, and per-view reconnect staleness
+- add Phase 6 browser resource snapshots combining direct DOM references with Resource Timing dependency evidence
+- add targeted CSS replacement and safe direct image/SVG cache busting with automatic full-reload fallback
+- add per-view resource completeness tracking so incomplete dependency snapshots remain conservative
 
 ### Changed
 
 - replace the unused `watchdog` development dependency with the runtime `watchfiles` dependency used by Kyth
 - load the ASGI import target in the child before Uvicorn startup so Kyth can install the transparent development wrapper without application changes
-- make control-plane generation commits silent by default; browser reload/sync actions are now emitted explicitly for the views affected by an invalidation decision
+- make control-plane generation commits silent by default; browser reload/sync actions are emitted explicitly for the views affected by an invalidation decision
 - use `http.HTTPStatus` constants consistently for HTTP response semantics
+- collapse mixed browser changes into at most one action per view per coherent generation; reload dominates incompatible narrow update kinds
+- keep JavaScript/font/observed-only resource changes on the full-reload path rather than implementing speculative generic HMR
 
 ### Deprecated
 
@@ -43,6 +48,7 @@ Items should be categorized under these headings:
 - fix Phase 3 control-plane lint and typing issues around HTTP handler overrides, SSE stream setup, static logging policy, and watcher context-manager documentation
 - fix spawned-child socket transfer so socket subclasses do not need to be pickled and narrow multiprocessing context typing to the spawn context actually used
 - keep injection test token fixtures and URL expectations derived from the same value
+- keep resource-update views stale until the browser confirms successful mutation by re-registering, preserving conservative reconnect recovery
 
 ### Security
 
