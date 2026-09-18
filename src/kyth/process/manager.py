@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING
 
 from kyth.process.child import run_child
 from kyth.process.readiness import ChildCommand, StartupEvent, StartupEventKind
+from kyth.process.socket import duplicate_listening_socket
 
 if TYPE_CHECKING:
     import socket
     from multiprocessing.connection import Connection
-    from multiprocessing.context import BaseContext
+    from multiprocessing.context import SpawnContext
     from multiprocessing.process import BaseProcess
 
 
@@ -25,7 +26,7 @@ class StartupResult:
 class ChildProcess:
     """Own one application child and its supervisor-side IPC endpoints."""
 
-    def __init__(self, *, context: BaseContext | None = None) -> None:
+    def __init__(self, *, context: SpawnContext | None = None) -> None:
         """Create a child-process owner using a spawn context by default."""
         self._context = context or multiprocessing.get_context("spawn")
         self._process: BaseProcess | None = None
@@ -51,9 +52,18 @@ class ChildProcess:
 
         readiness_recv, readiness_send = self._context.Pipe(duplex=False)
         control_recv, control_send = self._context.Pipe(duplex=False)
+        socket_transfer, socket_family, socket_type, socket_proto = duplicate_listening_socket(listening_socket)
         process = self._context.Process(
             target=run_child,
-            args=(app_target, listening_socket, readiness_send, control_recv),
+            args=(
+                app_target,
+                socket_transfer,
+                socket_family,
+                socket_type,
+                socket_proto,
+                readiness_send,
+                control_recv,
+            ),
             daemon=False,
         )
         process.start()

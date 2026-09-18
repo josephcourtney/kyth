@@ -10,6 +10,7 @@ Phase 1 of the ground-up Kyth implementation is complete. The next implementatio
 
 - `kyth package.module:app` runs an ASGI target under a long-lived supervisor;
 - the supervisor binds and retains the public listening socket across child replacement;
+- spawned children receive a duplicated socket descriptor/handle rather than a pickled socket object;
 - application children run under Uvicorn without Uvicorn reload mode;
 - readiness is reported only after ASGI lifespan startup completes;
 - startup failure leaves the supervisor recoverable without rebinding the public port;
@@ -22,4 +23,4 @@ Phase 1 of the ground-up Kyth implementation is complete. The next implementatio
 
 - no filesystem watcher or automatic restart trigger exists yet;
 - the browser control plane, HTML injection, and provenance/invalidation behavior remain design-only;
-- socket passing is implemented through Python multiprocessing's spawn context and has not yet been exercised on every supported operating system.
+- descriptor/handle transfer has not yet been exercised on every supported operating system.

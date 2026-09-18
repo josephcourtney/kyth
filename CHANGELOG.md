@@ -29,6 +29,8 @@ Items should be categorized under these headings:
 
 ### Fixed
 
+- fix spawned-child socket transfer so socket subclasses do not need to be pickled and narrow multiprocessing context typing to the spawn context actually used
+
 ### Security
 
 ## [0.0.0] - 2026-04-15

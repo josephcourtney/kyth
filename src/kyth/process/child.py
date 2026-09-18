@@ -7,10 +7,13 @@ from typing import TYPE_CHECKING
 import uvicorn
 
 from kyth.process.readiness import ChildCommand, StartupEvent
+from kyth.process.socket import rebuild_listening_socket
 
 if TYPE_CHECKING:
     import socket
     from multiprocessing.connection import Connection
+
+    from kyth.process.socket import SocketTransfer
 
 
 class _ReadinessServer(uvicorn.Server):
@@ -47,11 +50,20 @@ def _watch_control(server: uvicorn.Server, control: Connection) -> None:
 
 def run_child(
     app_target: str,
-    listening_socket: socket.socket,
+    socket_transfer: SocketTransfer,
+    socket_family: int,
+    socket_type: int,
+    socket_proto: int,
     readiness: Connection,
     control: Connection,
 ) -> None:
     """Process entry point for one restartable ASGI child."""
+    listening_socket = rebuild_listening_socket(
+        socket_transfer,
+        socket_family,
+        socket_type,
+        socket_proto,
+    )
     config = uvicorn.Config(app_target, reload=False, workers=1)
     server = _ReadinessServer(config, readiness)
     control_thread = threading.Thread(target=_watch_control, args=(server, control), daemon=True)

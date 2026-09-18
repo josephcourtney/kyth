@@ -11,7 +11,7 @@ from kyth.process.socket import DEFAULT_BACKLOG, bind_listening_socket
 
 if TYPE_CHECKING:
     import socket
-    from multiprocessing.context import BaseContext
+    from multiprocessing.context import SpawnContext
     from types import TracebackType
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class SupervisorConfig:
 class Supervisor:
     """Long-lived owner of the public socket and restartable application child."""
 
-    def __init__(self, config: SupervisorConfig, *, process_context: BaseContext | None = None) -> None:
+    def __init__(self, config: SupervisorConfig, *, process_context: SpawnContext | None = None) -> None:
         """Initialize supervisor state without binding resources yet."""
         self.config = config
         self.state = DevelopmentState()
