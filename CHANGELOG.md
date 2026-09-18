@@ -17,7 +17,16 @@ Items should be categorized under these headings:
 
 ## Unreleased
 
-No unreleased user-visible changes yet.
+### Added
+
+- add property-based tests for deterministic batches, conservative invalidation, generation monotonicity, protocol serialization, and direct-path safety
+- add hermetic fault-injection tests for render reporting and child readiness/control/shutdown policy
+- add a dedicated real-Chromium browser acceptance harness for client registration, CSS/image narrow updates, and reload fallback
+- add explicit `browser-install` and `browser-test` development recipes
+
+### Fixed
+
+- isolate Radon 6.0.1 behind a dedicated `radon.cfg` so pytest percent-style logging configuration no longer breaks complexity analysis
 
 ## [0.2.0] - 2026-09-18
 

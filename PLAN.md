@@ -132,9 +132,10 @@ Sequence hardening work as follows:
 2. simplify code where findings identify real maintenance cost, preserving established architecture and invariants;
 3. move policy/provenance behavior toward fast hermetic tests while keeping true filesystem, localhost-network, and subprocess behavior in integration/system tests;
 4. strengthen failure, race, reconnect, cleanup, watcher-coalescing, and malformed-input coverage;
-5. use mutation and property-based testing on pure state/policy layers to identify weak assertions and invariant gaps;
-6. add a minimal real-browser acceptance layer for the injected client and narrow-update/fallback behavior;
-7. rehearse lifecycle/socket behavior across the supported platform and Python-version matrix.
+5. use property-based testing on pure state/policy layers to exercise invariants across broad generated inputs;
+6. establish a minimal real-browser acceptance layer for the injected client and narrow-update/fallback behavior;
+7. only after the property and browser layers are stable, use mutation testing on pure state/policy modules to identify weak assertions;
+8. rehearse lifecycle/socket behavior across the supported platform and Python-version matrix as later hardening work.
 
 Do not optimize test-category percentages by relabeling genuinely I/O-bound tests. Improve the boundary between pure policy and I/O mechanisms instead.
 

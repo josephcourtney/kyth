@@ -4,28 +4,24 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-Kyth v0.2.0 is the validated Phase 1-8 baseline. Near-term work is hardening rather than feature expansion: improve code quality, test architecture, and robustness while preserving existing behavior.
+Kyth v0.2.0 is in hardening. Feature expansion and application hooks remain deferred. Current work is improving test architecture and robustness while preserving behavior.
 
 ## Current state
 
-- the full local `just check` gate passes on the v0.2.0 baseline;
-- supervisor-owned application/control sockets, restartable ASGI lifecycle, watching, HTML injection, targeted reload, narrow CSS/image updates, render provenance/Jinja tracing, and generated dependency manifests are implemented;
-- direct, render, resource, and manifest provenance all retain conservative reload fallbacks when evidence is incomplete;
-- application hooks are intentionally deferred until a concrete use case cannot be represented by existing provenance mechanisms;
-- package metadata and lockfile identify the baseline as 0.2.0.
+- the validated v0.2.0 baseline passes `just check`;
+- dead-code and duplication scans report no findings;
+- aggregate source coverage is about 81% lines / 65% branches, with the weakest areas concentrated in process lifecycle, control error paths, render reporting, and manifest validation;
+- Radon 6.0.1 cannot safely auto-read this project's pytest percent-style log format from `pyproject.toml`; complexity analysis is now isolated through `radon.cfg`;
+- property-based tests exercise pure batch, invalidation, generation, protocol, and path-safety invariants in the normal Python suite;
+- additional small fault-injection tests cover render reporting and child-process readiness/control/escalation policy without spawning processes;
+- a separate real-Chromium acceptance suite exercises the injected browser client, narrow CSS/image updates, and full-reload fallbacks;
+- browser installation/testing is explicit and remains outside `just check` so normal validation never downloads a browser;
+- mutation testing is deliberately deferred until the property and browser layers have been exercised and stabilized.
 
-## Hardening priorities
+## Remaining hardening priorities
 
-- reduce unnecessary complexity/duplication and remove dead code without redesigning stable boundaries;
-- strengthen pure policy/provenance tests and reduce reliance on medium integration tests where real I/O is not essential;
-- add systematic failure/race coverage around child lifecycle, IPC, control connections, watcher batching, manifests, and resource/render provenance;
-- use coverage, mutation testing, and property-based tests to find weak assertions rather than chasing line coverage alone;
-- exercise browser synchronization and supported-platform lifecycle behavior end to end before expanding the public API.
-
-## Known gaps
-
-- browser-client behavior has less black-box coverage than the Python control/supervisor layers;
-- the suite remains integration-heavy, with a substantially higher medium-test share than the project target;
-- unusual custom rendering stacks still fall back conservatively;
-- descriptor/socket transfer needs broader supported-platform rehearsal;
-- no Phase 9 hook API is planned unless hardening exposes a concrete requirement.
+- run the expanded `just check`, `just complexity --strict`, and dedicated browser acceptance suite and resolve findings;
+- inspect remaining uncovered failure branches in control/process/supervisor code and add focused regression cases;
+- improve browser reconnect/recovery acceptance coverage after the initial narrow-update suite is stable;
+- only then introduce mutation testing for pure policy/provenance modules;
+- platform/socket-transfer matrix testing is explicitly later work.

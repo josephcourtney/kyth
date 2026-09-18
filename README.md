@@ -32,4 +32,5 @@ See:
 - `notes/design/v1-protocol.md` for concrete V1 runtime and reload behavior;
 - `PLAN.md` for implementation sequencing;
 - `STATUS.md` for current project state;
-- `TODO.md` for immediate work.
+- `TODO.md` for immediate work;
+- `TESTING.md` for test layers, property-based testing, browser acceptance, and quality tooling.

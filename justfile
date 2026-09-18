@@ -22,6 +22,8 @@ UV_CACHE_DIR             := REPO_CACHE_DIR + "/uv"
 RUFF_CACHE_DIR           := REPO_CACHE_DIR + "/ruff"
 IMPORT_LINTER_CACHE_DIR  := REPO_CACHE_DIR + "/import-linter"
 PYTEST_CACHE_DIR         := REPO_CACHE_DIR + "/pytest"
+PLAYWRIGHT_BROWSERS_DIR  := REPO_CACHE_DIR + "/playwright"
+RADON_CONFIG             := ROOT_DIR + "/radon.cfg"
 
 PY_SRC      := "src"
 PY_TESTPATH := "tests"
@@ -46,6 +48,7 @@ IMPORT_LINTER        := UV + " run lint-imports --cache-dir " + IMPORT_LINTER_CA
 IMPORT_LINTER_CONFIG := ROOT_DIR + "/import-linter.toml"
 
 JSCPD := "npx --yes jscpd@4.0"
+PLAYWRIGHT_VERSION := "1.63.0"
 
 
 # ======================================================================
@@ -102,6 +105,7 @@ env:
   @echo "SHOWCOV={{SHOWCOV}}"
   @echo "VULTURE={{VULTURE}}"
   @echo "RADON={{RADON}}"
+  @echo "RADON_CONFIG={{RADON_CONFIG}}"
   @echo "IMPORT_LINTER={{IMPORT_LINTER}}"
   @echo "JSCPD={{JSCPD}}"
   @{{UV}} --version || true
@@ -392,17 +396,17 @@ complexity raw="false" strict="false" min_complexity="11":
   fi
 
   if [ "{{raw}}" = "true" ]; then
-    {{RADON}} raw "{{PY_SRC}}"
+    RADONCFG="{{RADON_CONFIG}}" {{RADON}} raw "{{PY_SRC}}"
   elif [ "{{strict}}" = "true" ]; then
     echo "[complexity] failing if any block has complexity >= {{min_complexity}}"
-    output="$({{RADON}} cc -s -n "{{min_complexity}}" "{{PY_SRC}}" || true)"
+    output="$(RADONCFG="{{RADON_CONFIG}}" {{RADON}} cc -s -n "{{min_complexity}}" "{{PY_SRC}}" || true)"
     if [ -n "$output" ]; then
       echo "$output"
       exit 1
     fi
     echo "[complexity] all blocks are below {{min_complexity}}"
   else
-    {{RADON}} cc -s -a "{{PY_SRC}}"
+    RADONCFG="{{RADON_CONFIG}}" {{RADON}} cc -s -a "{{PY_SRC}}"
   fi
 
   just _log_end complexity
@@ -608,6 +612,42 @@ test strict="true" fast="false" dev="false" quiet="" logs="" debug="" failing="f
   fi
 
   exit 0
+
+
+# Install the pinned Chromium build used by the real-browser acceptance suite.
+[group('testing')]
+browser-install:
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  just _log_start browser-install
+  just _cache_dirs
+  PLAYWRIGHT_BROWSERS_PATH="{{PLAYWRIGHT_BROWSERS_DIR}}" \
+    {{UV}} run --with "playwright=={{PLAYWRIGHT_VERSION}}" playwright install chromium
+  just _log_end browser-install
+
+
+# Run the black-box browser client acceptance suite. Browser installation is
+# explicit so ordinary checks never download or update a browser implicitly.
+[group('testing')]
+browser-test:
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  just _log_start browser-test
+  just _cache_dirs
+
+  if [ ! -d "{{PLAYWRIGHT_BROWSERS_DIR}}" ]; then
+    echo "[browser-test] Chromium is not installed; run: just browser-install" >&2
+    exit 1
+  fi
+
+  PLAYWRIGHT_BROWSERS_PATH="{{PLAYWRIGHT_BROWSERS_DIR}}" \
+    {{UV}} run --with "playwright=={{PLAYWRIGHT_VERSION}}" \
+      pytest -o cache_dir="{{PYTEST_CACHE_DIR}}" --no-cov \
+      tests/browser/browser_acceptance.py
+
+  just _log_end browser-test
 
 
 # ======================================================================
