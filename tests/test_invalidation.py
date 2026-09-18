@@ -178,9 +178,7 @@ def test_mixed_css_and_image_changes_collapse_to_one_reload_per_view() -> None:
         active_view_ids={"view"},
     )
 
-    assert [(action.view_id, action.kind) for action in decision.actions] == [
-        ("view", BrowserActionKind.RELOAD)
-    ]
+    assert [(action.view_id, action.kind) for action in decision.actions] == [("view", BrowserActionKind.RELOAD)]
 
 
 @pytest.mark.unit
@@ -265,9 +263,7 @@ def test_complete_render_provenance_reloads_only_dependent_view() -> None:
         active_view_ids={"first-view", "second-view"},
     )
 
-    assert [(action.view_id, action.kind) for action in decision.actions] == [
-        ("first-view", BrowserActionKind.RELOAD)
-    ]
+    assert [(action.view_id, action.kind) for action in decision.actions] == [("first-view", BrowserActionKind.RELOAD)]
     assert decision.current_view_ids == ("second-view",)
     assert decision.reason == "render-provenance"
 
@@ -290,7 +286,5 @@ def test_manifest_generated_views_are_deferred_for_shared_render_source() -> Non
         active_view_ids={"dynamic", "generated"},
     )
 
-    assert [(action.view_id, action.kind) for action in decision.actions] == [
-        ("dynamic", BrowserActionKind.RELOAD)
-    ]
+    assert [(action.view_id, action.kind) for action in decision.actions] == [("dynamic", BrowserActionKind.RELOAD)]
     assert decision.current_view_ids == ("generated",)

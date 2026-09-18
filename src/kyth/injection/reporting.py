@@ -5,9 +5,11 @@ import http.client
 import json
 import logging
 from http import HTTPStatus
+from typing import TYPE_CHECKING
 from urllib.parse import urlencode, urlsplit
 
-from kyth.model import RenderRecord
+if TYPE_CHECKING:
+    from kyth.model import RenderRecord
 
 logger = logging.getLogger(__name__)
 

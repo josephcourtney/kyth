@@ -31,7 +31,7 @@ class RenderTrace:
         """Record one concrete template object used by the current render."""
         self.used = True
         try:
-            filename = object.__getattribute__(template, "filename")
+            filename = object.__getattribute__(template, "filename")  # ruff: ignore[unnecessary-dunder-call] # necessary for a dataclass after initialization
         except AttributeError:
             self.complete = False
             return
@@ -93,7 +93,7 @@ def install_jinja_tracing() -> bool:
             return True
         _patch_environment(environment_class)
         _patch_template(template_class)
-        _set_attribute(environment_class, "_kyth_tracing_installed", True)
+        _set_attribute(environment_class, "_kyth_tracing_installed", value=True)
     return True
 
 

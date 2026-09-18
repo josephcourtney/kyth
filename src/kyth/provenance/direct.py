@@ -176,11 +176,7 @@ def _resolve_candidate(
     *,
     known_paths: set[Path],
 ) -> Path | None:
-    candidates = tuple(
-        candidate
-        for root in roots
-        if (candidate := _candidate(root, relative)) is not None
-    )
+    candidates = tuple(candidate for root in roots if (candidate := _candidate(root, relative)) is not None)
     existing = tuple(candidate for candidate in candidates if candidate.is_file())
     if len(existing) == 1:
         return existing[0]

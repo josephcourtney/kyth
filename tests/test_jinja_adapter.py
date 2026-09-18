@@ -3,22 +3,18 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
 import pytest
 
 import kyth.injection.jinja as jinja_adapter
 from kyth.injection.jinja import capture_render, install_jinja_tracing
 
-if TYPE_CHECKING:
-    from pytest import MonkeyPatch
-
 
 @pytest.mark.integration
 @pytest.mark.medium
 def test_jinja_adapter_captures_runtime_selected_template_dependencies(
     tmp_path: Path,
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     for name in ("page.html", "base.html", "include-a.html", "macros.html"):
         (tmp_path / name).write_text(name, encoding="utf-8")

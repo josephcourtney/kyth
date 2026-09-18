@@ -10,6 +10,7 @@ from kyth.provenance import (
     direct_resource_relative_path,
 )
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_direct_document_relative_path_accepts_only_explicit_html_documents() -> None:
@@ -18,6 +19,7 @@ def test_direct_document_relative_path_accepts_only_explicit_html_documents() ->
     assert direct_document_relative_path("http://127.0.0.1:8000/docs/") == PurePosixPath("docs/index.html")
     assert direct_document_relative_path("http://127.0.0.1:8000/about") is None
     assert direct_document_relative_path("http://127.0.0.1:8000/%2e%2e/secret.html") is None
+
 
 @pytest.mark.integration
 @pytest.mark.medium
@@ -45,6 +47,7 @@ def test_direct_output_index_tracks_active_and_previously_observed_outputs(tmp_p
     assert provenance.output_views == {index.resolve(): ("home",)}
     assert provenance.known_outputs == frozenset({index.resolve(), about.resolve()})
 
+
 @pytest.mark.integration
 @pytest.mark.medium
 def test_direct_output_index_rejects_ambiguous_roots(tmp_path: Path) -> None:
@@ -61,6 +64,7 @@ def test_direct_output_index_rejects_ambiguous_roots(tmp_path: Path) -> None:
     assert provenance.output_views == {}
     assert provenance.known_outputs == frozenset()
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_direct_resource_relative_path_accepts_explicit_resource_urls() -> None:
@@ -69,6 +73,7 @@ def test_direct_resource_relative_path_accepts_explicit_resource_urls() -> None:
     )
     assert direct_resource_relative_path("http://127.0.0.1:8000/static/") is None
     assert direct_resource_relative_path("http://127.0.0.1:8000/%2e%2e/site.css") is None
+
 
 @pytest.mark.integration
 @pytest.mark.medium
@@ -112,6 +117,7 @@ def test_direct_resource_index_maps_resources_and_snapshot_completeness(tmp_path
             ),
         ),
     }
+
 
 @pytest.mark.integration
 @pytest.mark.medium

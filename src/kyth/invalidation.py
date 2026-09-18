@@ -51,16 +51,8 @@ def decide_browser_invalidation(
             reason="ambiguous-browser-dependency",
         )
 
-    direct_views = {
-        view_id
-        for view_ids in output_views.values()
-        for view_id in view_ids
-    } & active
-    affected = {
-        view_id
-        for path in paths
-        for view_id in output_views.get(path, ())
-    } & active
+    direct_views = {view_id for view_ids in output_views.values() for view_id in view_ids} & active
+    affected = {view_id for path in paths for view_id in output_views.get(path, ())} & active
     reload_views = affected | (active - direct_views)
     current = direct_views - affected
     return InvalidationDecision(
@@ -165,11 +157,7 @@ def _split_paths(
     known_render_sources: Collection[Path],
 ) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
     content_known = set(known_outputs) | set(known_render_sources)
-    content = tuple(
-        path
-        for path in paths
-        if path.suffix.lower() in HTML_SUFFIXES or path in content_known
-    )
+    content = tuple(path for path in paths if path.suffix.lower() in HTML_SUFFIXES or path in content_known)
     content_set = set(content)
     resources = tuple(path for path in paths if path not in content_set)
     return content, resources
@@ -204,11 +192,7 @@ def _merge_content_actions(
 ) -> None:
     known_output_paths = set(known_outputs)
     known_render_paths = set(known_render_sources)
-    direct_views = {
-        view_id
-        for view_ids in output_views.values()
-        for view_id in view_ids
-    } & active
+    direct_views = {view_id for view_ids in output_views.values() for view_id in view_ids} & active
     complete_render_views = set(complete_render_view_ids) & active
 
     for path in paths:

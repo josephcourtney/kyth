@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kyth.model import SourceVersion
+
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
-    from kyth.model import RenderRecord, SourceVersion
+    from kyth.model import RenderRecord
 
 
 class RenderProvenanceIndex:
@@ -26,17 +28,11 @@ class RenderProvenanceIndex:
 
     @property
     def source_views(self) -> dict[Path, tuple[str, ...]]:
-        return {
-            path: tuple(sorted(view_ids))
-            for path, view_ids in self._source_views.items()
-        }
+        return {path: tuple(sorted(view_ids)) for path, view_ids in self._source_views.items()}
 
     @property
     def source_view_versions(self) -> dict[Path, dict[str, SourceVersion]]:
-        return {
-            path: dict(versions)
-            for path, versions in self._source_view_versions.items()
-        }
+        return {path: dict(versions) for path, versions in self._source_view_versions.items()}
 
     @property
     def complete_view_ids(self) -> frozenset[str]:
@@ -81,13 +77,7 @@ class RenderProvenanceIndex:
             path = changed_path.expanduser().resolve(strict=False)
             current = _source_version(path)
             versions = self._source_view_versions.get(path, {})
-            view_ids = tuple(
-                sorted(
-                    view_id
-                    for view_id, version in versions.items()
-                    if version != current
-                )
-            )
+            view_ids = tuple(sorted(view_id for view_id, version in versions.items() if version != current))
             if view_ids:
                 stale[path] = view_ids
         return stale

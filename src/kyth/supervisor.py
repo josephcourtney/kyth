@@ -289,8 +289,7 @@ class Supervisor:
         self._control.set_generation(generation)
         self._publish_browser_decision(decision, generation)
         action_counts = {
-            kind.value: sum(action.kind is kind for action in decision.actions)
-            for kind in BrowserActionKind
+            kind.value: sum(action.kind is kind for action in decision.actions) for kind in BrowserActionKind
         }
         logger.info(
             "browser-facing state ready; generation %d; reason=%s; actions=%s",
@@ -304,11 +303,7 @@ class Supervisor:
         control = self._require_control()
         views = control.views.snapshot()
         normalized = tuple(self._direct_outputs.normalize_changed_path(path) for path in changed_paths)
-        generated_output_views = self._generated.output_views({
-            view.view_id: view.url
-            for view in views
-            if view.url
-        })
+        generated_output_views = self._generated.output_views({view.view_id: view.url for view in views if view.url})
         output_views = self._combined_output_views(generated_output_views)
         return decide_browser_updates(
             normalized,
@@ -353,49 +348,28 @@ class Supervisor:
         self._direct_outputs.reconcile(view_urls)
         self._direct_resources.reconcile(
             {view.view_id: view.resources for view in views},
-            complete_view_ids=tuple(
-                view.view_id
-                for view in views
-                if view.resources_complete is True
-            ),
+            complete_view_ids=tuple(view.view_id for view in views if view.resources_complete is True),
         )
         self._render_provenance.reconcile(
             self._control.renders.snapshot(),
-            {
-                view.view_id: view.render_id
-                for view in views
-                if view.render_id is not None
-            },
+            {view.view_id: view.render_id for view in views if view.render_id is not None},
         )
 
     def _combined_output_views(
         self,
         generated_output_views: dict[Path, tuple[str, ...]],
     ) -> dict[Path, tuple[str, ...]]:
-        combined = {
-            output: set(view_ids)
-            for output, view_ids in self._direct_outputs.output_views.items()
-        }
+        combined = {output: set(view_ids) for output, view_ids in self._direct_outputs.output_views.items()}
         for output, view_ids in generated_output_views.items():
             combined.setdefault(output, set()).update(view_ids)
-        return {
-            output: tuple(sorted(view_ids))
-            for output, view_ids in combined.items()
-        }
+        return {output: tuple(sorted(view_ids)) for output, view_ids in combined.items()}
 
     def _generated_source_views(
         self,
         generated_output_views: dict[Path, tuple[str, ...]],
     ) -> dict[Path, tuple[str, ...]]:
-        manifest_views = {
-            view_id
-            for view_ids in generated_output_views.values()
-            for view_id in view_ids
-        }
-        return {
-            source: tuple(sorted(manifest_views))
-            for source in self._generated.known_sources
-        }
+        manifest_views = {view_id for view_ids in generated_output_views.values() for view_id in view_ids}
+        return {source: tuple(sorted(manifest_views)) for source in self._generated.known_sources}
 
     def _relevant_browser_paths(self, changes: ChangeSet) -> tuple[Path, ...]:
         manifest_paths = self._generated.manifest_paths
@@ -433,8 +407,8 @@ class Supervisor:
     def _refresh_changed_manifests(self, changed_paths: tuple[Path, ...]) -> None:
         try:
             reloaded = self._generated.reload_changed(changed_paths)
-        except (ManifestError, TypeError) as exc:
-            logger.error("generated dependency manifest reload failed: %s", exc)
+        except (ManifestError, TypeError):
+            logger.exception("generated dependency manifest reload failed")
             return
         if reloaded:
             logger.info(
@@ -502,10 +476,7 @@ class Supervisor:
 
 
 def _development_roots(config: SupervisorConfig) -> tuple[Path, ...]:
-    roots = [
-        path.expanduser().resolve(strict=False)
-        for path in (config.watch_roots or (Path.cwd(),))
-    ]
+    roots = [path.expanduser().resolve(strict=False) for path in (config.watch_roots or (Path.cwd(),))]
     for manifest_path in config.manifest_paths:
         parent = manifest_path.expanduser().resolve(strict=False).parent
         if not any(parent.is_relative_to(root) for root in roots):

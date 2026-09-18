@@ -482,8 +482,7 @@ def _source_versions(payload: dict[str, object]) -> tuple[SourceVersion, ...]:
         raise ValueError(msg)
 
     dependencies: set[SourceVersion] = set()
-    for item in value:
-        dependencies.add(_source_version(item))
+    dependencies.update(_source_version(item) for item in value)
     return tuple(sorted(dependencies, key=lambda dependency: dependency.path))
 
 
@@ -603,9 +602,6 @@ def _view_payload(view: BrowserView) -> dict[str, object]:
         "url": view.url,
         "generation": view.generation,
         "render_id": view.render_id,
-        "resources": [
-            {"url": resource.url, "kind": resource.kind.value}
-            for resource in view.resources
-        ],
+        "resources": [{"url": resource.url, "kind": resource.kind.value} for resource in view.resources],
         "resources_complete": view.resources_complete,
     }

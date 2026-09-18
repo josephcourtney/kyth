@@ -106,10 +106,7 @@ class GeneratedManifestIndex:
 
     @property
     def source_outputs(self) -> dict[Path, tuple[Path, ...]]:
-        return {
-            source: tuple(sorted(outputs, key=Path.as_posix))
-            for source, outputs in self._source_outputs.items()
-        }
+        return {source: tuple(sorted(outputs, key=Path.as_posix)) for source, outputs in self._source_outputs.items()}
 
     def load_all(self) -> None:
         """Load all configured manifests, raising on the first invalid manifest."""
@@ -146,10 +143,7 @@ class GeneratedManifestIndex:
             output = self._url_outputs.get(path)
             if output is not None:
                 grouped.setdefault(output, []).append(view_id)
-        return {
-            output: tuple(sorted(view_ids))
-            for output, view_ids in grouped.items()
-        }
+        return {output: tuple(sorted(view_ids)) for output, view_ids in grouped.items()}
 
     def mark_sources_changed(self, changed_paths: Collection[Path]) -> tuple[Path, ...]:
         """Mark generated outputs stale from source changes without browser action."""
@@ -165,6 +159,7 @@ class GeneratedManifestIndex:
         cleared = self._stale_outputs & updated
         self._stale_outputs.difference_update(cleared)
         return tuple(sorted(cleared, key=Path.as_posix))
+
 
 def _build_indexes(
     manifests: Collection[DependencyManifest],
