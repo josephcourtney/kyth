@@ -304,14 +304,20 @@ class Supervisor:
         control = self._require_control()
         views = control.views.snapshot()
         normalized = tuple(self._direct_outputs.normalize_changed_path(path) for path in changed_paths)
+        generated_output_views = self._generated.output_views({
+            view.view_id: view.url
+            for view in views
+            if view.url
+        })
+        output_views = self._combined_output_views(generated_output_views)
         return decide_browser_updates(
             normalized,
             known_outputs=self._direct_outputs.known_outputs | self._generated.known_outputs,
-            output_views=self._direct_outputs.output_views,
+            output_views=output_views,
             known_render_sources=self._render_provenance.known_sources,
             render_source_views=self._render_provenance.stale_source_views(normalized),
             complete_render_view_ids=self._render_provenance.complete_view_ids,
-            deferred_source_views=self._generated_source_views(),
+            deferred_source_views=self._generated_source_views(generated_output_views),
             known_resources=self._direct_resources.known_resources,
             resource_views=self._direct_resources.resource_views,
             complete_resource_view_ids=self._direct_resources.complete_view_ids,
@@ -362,12 +368,29 @@ class Supervisor:
             },
         )
 
-    def _generated_source_views(self) -> dict[Path, tuple[str, ...]]:
-        output_views = self._direct_outputs.output_views
+    def _combined_output_views(
+        self,
+        generated_output_views: dict[Path, tuple[str, ...]],
+    ) -> dict[Path, tuple[str, ...]]:
+        combined = {
+            output: set(view_ids)
+            for output, view_ids in self._direct_outputs.output_views.items()
+        }
+        for output, view_ids in generated_output_views.items():
+            combined.setdefault(output, set()).update(view_ids)
+        return {
+            output: tuple(sorted(view_ids))
+            for output, view_ids in combined.items()
+        }
+
+    def _generated_source_views(
+        self,
+        generated_output_views: dict[Path, tuple[str, ...]],
+    ) -> dict[Path, tuple[str, ...]]:
         manifest_views = {
             view_id
-            for output in self._generated.known_outputs
-            for view_id in output_views.get(output, ())
+            for view_ids in generated_output_views.values()
+            for view_id in view_ids
         }
         return {
             source: tuple(sorted(manifest_views))

@@ -301,6 +301,7 @@ The stable V1 manifest schema is JSON:
   "outputs": [
     {
       "output": "public/index.html",
+      "url": "/",
       "sources": [
         "content/index.md",
         "templates/base.html"
@@ -310,7 +311,7 @@ The stable V1 manifest schema is JSON:
 }
 ```
 
-Manifest source/output paths are normalized relative paths beneath the manifest directory. V1 manifest outputs are HTML documents. Paths may not be absolute or escape the manifest directory, output entries are unique, and each output declares at least one source.
+Manifest source/output paths are normalized relative paths beneath the manifest directory. V1 manifest outputs are HTML documents. Paths may not be absolute or escape the manifest directory, output entries are unique, and each output declares at least one source. An optional `url` declares the browser path that serves that output; this is useful when a publish directory such as `public/` is mounted as the site root. Explicit URLs are path-only, normalized, and unique across configured manifests.
 
 A source change marks every dependent generated output stale but does not itself disturb the browser. When the generated output later receives an add/modify event, Kyth clears that stale state and applies the normal direct-output/view invalidation rules. A deletion-only output event is not considered ready and therefore does not reload the browser into a transiently missing build artifact.
 

@@ -18,7 +18,7 @@ For generated sites, pass one or more dependency manifests:
 kyth package.module:app --manifest path/to/kyth-manifest.json
 ```
 
-A V1 manifest is versioned JSON mapping relative HTML outputs to the relative source files that generate them. Its directory becomes a development watch root automatically.
+A V1 manifest is versioned JSON mapping relative HTML outputs to the relative source files that generate them. Outputs may also declare the browser URL that serves them (for example `public/index.html` → `/`). Its directory becomes a development watch root automatically.
 
 For supported ordinary HTML responses, no application or template changes are required. When Jinja is present, Kyth records the actual filesystem-backed templates used by each rendered response and uses that provenance to avoid disturbing views whose complete render did not depend on a changed template.
 

@@ -29,7 +29,7 @@ Items should be categorized under these headings:
 - add zero-touch request-scoped Jinja tracing for filesystem-backed runtime template dependencies
 - add render source-version comparison so watcher batches do not reload views that already rendered the current template version
 - add Phase 8 stable version-1 generated dependency manifests with source-to-output staleness tracking
-- add repeated `--manifest` CLI configuration and automatic manifest-directory watch roots
+- add repeated `--manifest` CLI configuration, optional generated-output browser URLs, and automatic manifest-directory watch roots
 - add generated-output readiness handling that waits for add/modify after transient deletion
 
 ### Changed

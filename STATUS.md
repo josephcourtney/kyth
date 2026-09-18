@@ -20,7 +20,7 @@ Phases 1 through 8 of the ground-up Kyth implementation are complete. The next i
 - when Jinja is available, Kyth installs request-scoped zero-touch tracing of filesystem-backed templates used by normal runtime lookup/render paths;
 - complete Jinja renders allow unrelated template edits to leave unaffected views current, and source-version comparison suppresses redundant reload when a view already rendered the new template version;
 - incomplete/unavailable render provenance falls back to reload;
-- repeated `--manifest PATH` options load stable version-1 generated dependency manifests;
+- repeated `--manifest PATH` options load stable version-1 generated dependency manifests, including optional explicit browser-URL mappings for publish directories;
 - manifest source changes mark generated outputs stale without reloading them before regeneration;
 - generated output deletion-only events remain stale; an add/modify event is required before browser synchronization;
 - inactive stale generated outputs require no eager browser action;

@@ -13,10 +13,12 @@ def _write_manifest(path: Path) -> None:
             "outputs": [
                 {
                     "output": "public/index.html",
+                    "url": "/",
                     "sources": ["content/index.md", "templates/base.html"],
                 },
                 {
                     "output": "public/about.html",
+                    "url": "/about/",
                     "sources": ["content/about.md", "templates/base.html"],
                 },
             ],
@@ -42,6 +44,7 @@ def test_manifest_loads_relative_source_to_output_dependencies(tmp_path: Path) -
         (tmp_path / "content" / "index.md").resolve(),
         (tmp_path / "templates" / "base.html").resolve(),
     )
+    assert index_entry.url_path == "/"
 
 
 @pytest.mark.integration
@@ -78,3 +81,23 @@ def test_manifest_rejects_path_escape_and_unsupported_version(tmp_path: Path) ->
     path.write_text(json.dumps({"version": 2, "outputs": []}), encoding="utf-8")
     with pytest.raises(ManifestError, match="unsupported manifest version"):
         load_manifest(path)
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_manifest_explicit_urls_map_active_views_to_generated_outputs(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "kyth-manifest.json"
+    _write_manifest(manifest_path)
+    index = GeneratedManifestIndex((manifest_path,))
+    index.load_all()
+
+    views = index.output_views({
+        "home": "http://127.0.0.1:8000/?preview=1",
+        "about": "http://127.0.0.1:8000/about/",
+        "dynamic": "http://127.0.0.1:8000/dynamic",
+    })
+
+    assert views == {
+        (tmp_path / "public" / "about.html").resolve(): ("about",),
+        (tmp_path / "public" / "index.html").resolve(): ("home",),
+    }
