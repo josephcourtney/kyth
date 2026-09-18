@@ -35,6 +35,22 @@ class BrowserResource:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceVersion:
+    path: str
+    mtime_ns: int | None
+    size: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class RenderRecord:
+    render_id: str
+    generation: int
+    dependencies: tuple[SourceVersion, ...]
+    complete: bool
+    adapter: str
+
+
+@dataclass(frozen=True, slots=True)
 class ChildState:
     status: ChildStatus = ChildStatus.ABSENT
     pid: int | None = None

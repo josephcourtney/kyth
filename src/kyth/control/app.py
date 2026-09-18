@@ -13,9 +13,10 @@ from typing import TYPE_CHECKING, Self, cast
 from urllib.parse import parse_qs, urlsplit
 
 from kyth.control.client import CLIENT_JAVASCRIPT
+from kyth.control.renders import RenderRegistry
 from kyth.control.sse import EventBroker, SubscriberQueue, encode_sse
 from kyth.control.views import BrowserView, ViewRegistry
-from kyth.model import BrowserResource, BrowserResourceKind
+from kyth.model import BrowserResource, BrowserResourceKind, RenderRecord, SourceVersion
 from kyth.protocol import ControlEvent
 
 if TYPE_CHECKING:
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 MAX_REQUEST_BODY = 64 * 1024
 MAX_REGISTERED_RESOURCES = 256
+MAX_RENDER_DEPENDENCIES = 512
 DEFAULT_HEARTBEAT_SECONDS = 15.0
 
 
@@ -38,6 +40,7 @@ class _ControlState:
     ) -> None:
         self.token = token
         self.views = ViewRegistry(inactivity_timeout=inactivity_timeout)
+        self.renders = RenderRegistry()
         self.broker = EventBroker()
         self._generation = generation
         self._lock = Lock()
@@ -97,14 +100,23 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
         authorized, origin = self._authorize_request()
         if not authorized:
             return
-        if self._request_path() != "/views":
-            self._send_status(HTTPStatus.NOT_FOUND, origin=origin)
-            return
 
+        path = self._request_path()
+        if path == "/views":
+            self._register_view(origin)
+            return
+        if path == "/renders":
+            if origin is not None:
+                self._send_status(HTTPStatus.FORBIDDEN, origin=origin)
+                return
+            self._register_render()
+            return
+        self._send_status(HTTPStatus.NOT_FOUND, origin=origin)
+
+    def _register_view(self, origin: str | None) -> None:
         payload = self._read_json_object(origin)
         if payload is None:
             return
-
         try:
             registration = _view_registration(payload)
         except (TypeError, ValueError) as exc:
@@ -121,6 +133,19 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             resources_complete=resources_complete,
         )
         self._send_json(HTTPStatus.OK, _view_payload(view), origin=origin)
+
+    def _register_render(self) -> None:
+        payload = self._read_json_object(None)
+        if payload is None:
+            return
+        try:
+            record = _render_record(payload)
+        except (TypeError, ValueError) as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+
+        self._state.renders.register(record)
+        self._send_json(HTTPStatus.OK, _render_payload(record))
 
     def do_GET(self) -> None:
         authorized, origin = self._authorize_request()
@@ -337,6 +362,10 @@ class ControlService:
     def views(self) -> ViewRegistry:
         return self._state.views
 
+    @property
+    def renders(self) -> RenderRegistry:
+        return self._state.renders
+
     def start(self) -> None:
         if self._thread is not None:
             return
@@ -428,6 +457,75 @@ def _view_registration(
     )
 
 
+def _render_record(payload: dict[str, object]) -> RenderRecord:
+    render_id = _required_string(payload, "render_id")
+    generation = _required_nonnegative_int(payload, "generation")
+    adapter = _required_string(payload, "adapter")
+    complete = _required_bool(payload, "complete")
+    dependencies = _source_versions(payload)
+    return RenderRecord(
+        render_id=render_id,
+        generation=generation,
+        dependencies=dependencies,
+        complete=complete,
+        adapter=adapter,
+    )
+
+
+def _source_versions(payload: dict[str, object]) -> tuple[SourceVersion, ...]:
+    value = payload.get("dependencies")
+    if not isinstance(value, list):
+        msg = "dependencies must be a JSON array"
+        raise TypeError(msg)
+    if len(value) > MAX_RENDER_DEPENDENCIES:
+        msg = "dependencies contains too many entries"
+        raise ValueError(msg)
+
+    dependencies: set[SourceVersion] = set()
+    for item in value:
+        dependencies.add(_source_version(item))
+    return tuple(sorted(dependencies, key=lambda dependency: dependency.path))
+
+
+def _source_version(value: object) -> SourceVersion:
+    if not isinstance(value, dict):
+        msg = "each dependency must be a JSON object"
+        raise TypeError(msg)
+    path = value.get("path")
+    if not isinstance(path, str):
+        msg = "dependency path must be a string"
+        raise TypeError(msg)
+    if not path:
+        msg = "dependency path must be non-empty"
+        raise ValueError(msg)
+    return SourceVersion(
+        path=path,
+        mtime_ns=_optional_nonnegative_int(value, "mtime_ns"),
+        size=_optional_nonnegative_int(value, "size"),
+    )
+
+
+def _required_bool(payload: dict[str, object], key: str) -> bool:
+    value = payload.get(key)
+    if not isinstance(value, bool):
+        msg = f"{key} must be a boolean"
+        raise TypeError(msg)
+    return value
+
+
+def _optional_nonnegative_int(payload: dict[str, object], key: str) -> int | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        msg = f"{key} must be an integer or null"
+        raise TypeError(msg)
+    if value < 0:
+        msg = f"{key} must be non-negative"
+        raise ValueError(msg)
+    return value
+
+
 def _optional_bool(payload: dict[str, object], key: str) -> bool | None:
     value = payload.get(key)
     if value is None:
@@ -480,6 +578,23 @@ def _required_nonnegative_int(payload: dict[str, object], key: str) -> int:
         msg = f"{key} must be a non-negative integer"
         raise ValueError(msg)
     return value
+
+
+def _render_payload(record: RenderRecord) -> dict[str, object]:
+    return {
+        "render_id": record.render_id,
+        "generation": record.generation,
+        "complete": record.complete,
+        "adapter": record.adapter,
+        "dependencies": [
+            {
+                "path": dependency.path,
+                "mtime_ns": dependency.mtime_ns,
+                "size": dependency.size,
+            }
+            for dependency in record.dependencies
+        ],
+    }
 
 
 def _view_payload(view: BrowserView) -> dict[str, object]:

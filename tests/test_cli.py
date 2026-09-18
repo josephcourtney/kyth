@@ -20,6 +20,8 @@ def test_parser_accepts_target_host_port_watch_paths_and_control_port() -> None:
         "templates",
         "--ignore",
         "generated",
+        "--manifest",
+        "build/kyth-manifest.json",
         "--control-port",
         "8765",
     ])
@@ -29,4 +31,5 @@ def test_parser_accepts_target_host_port_watch_paths_and_control_port() -> None:
     assert args.port == 4321
     assert args.watch_roots == [Path("src"), Path("templates")]
     assert args.ignored_paths == [Path("generated")]
+    assert args.manifest_paths == [Path("build/kyth-manifest.json")]
     assert args.control_port == 8765

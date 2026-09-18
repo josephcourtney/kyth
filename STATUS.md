@@ -4,34 +4,36 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-Phases 1 through 6 of the ground-up Kyth implementation are complete. The next implementation boundary is Phase 7: render provenance and the first template-engine adapter.
+Phases 1 through 8 of the ground-up Kyth implementation are complete. The next implementation boundary is Phase 9: optional application hooks, only where concrete use cases justify them.
 
 ## Current state
 
 - `kyth package.module:app` runs an ASGI target under a long-lived supervisor;
 - the supervisor retains the public application listening socket and separate loopback control service across child replacement;
-- `watchfiles` observes configurable roots, normalizes deterministic batches, and drives restart classification/coalescing;
+- `watchfiles` observes configurable development roots, normalizes deterministic batches, and drives restart/invalidation decisions;
 - successful Python restart publishes browser reload only after replacement ASGI readiness;
 - ordinary buffered `text/html` responses receive the browser client transparently;
-- the browser client registers tab-scoped view identity and maintains generation-aware SSE synchronization;
-- direct output provenance maps explicit HTML/trailing-slash URLs to exactly one matching file beneath configured watch roots;
-- browser resource registration combines direct DOM references with same-origin Resource Timing observations;
-- incomplete resource snapshots remain explicitly conservative rather than silently omitting dependency edges;
-- directly linked external stylesheets receive targeted `css-update` events and are replaced only after generation-specific replacements load successfully;
-- ordinary direct `<img src>` image/SVG resources without `srcset`/`picture` indirection receive targeted `asset-update` cache busting;
-- observed-only CSS/images, fonts, JavaScript, unsupported assets, and mixed narrow-update kinds fall back to targeted full reload;
-- unknown changed browser resources retain the application-wide full-reload fallback;
-- one filesystem batch produces at most one browser action per view;
-- views requiring no action are marked current immediately, while views receiving reload/narrow updates remain stale until navigation or successful mutation re-registers them;
-- reconnect synchronization therefore recovers missed/failed updates conservatively without causing delayed reloads for unrelated views.
+- direct HTML and browser-resource provenance supports targeted reload and narrow CSS/image replacement;
+- incomplete or ambiguous browser-resource evidence remains conservative;
+- render provenance uses an adapter-neutral `RenderRecord` with opaque render identity, source versions, dependency set, adapter name, and completeness;
+- the child reports render records to a bounded supervisor-owned registry through a token-gated child-only control endpoint;
+- when Jinja is available, Kyth installs request-scoped zero-touch tracing of filesystem-backed templates used by normal runtime lookup/render paths;
+- complete Jinja renders allow unrelated template edits to leave unaffected views current, and source-version comparison suppresses redundant reload when a view already rendered the new template version;
+- incomplete/unavailable render provenance falls back to reload;
+- repeated `--manifest PATH` options load stable version-1 generated dependency manifests;
+- manifest source changes mark generated outputs stale without reloading them before regeneration;
+- generated output deletion-only events remain stale; an add/modify event is required before browser synchronization;
+- inactive stale generated outputs require no eager browser action;
+- manifest directories are included in effective development roots automatically;
+- the Phase 1-6 generic fallbacks remain intact when no Jinja adapter or manifest applies.
 
 ## Known gaps
 
-- template/render provenance remains design-only until Phase 7;
-- generated source-to-output manifests remain Phase 8;
-- CSS replacement is limited to direct enabled stylesheet links; imported/observed-only stylesheets reload;
-- image replacement intentionally excludes `srcset`, `picture`, CSS backgrounds, and other non-generic mutation paths;
-- fonts are dependency-tracked but not mutated in place;
-- JavaScript remains full-reload only unless a later external-HMR integration owns it;
+- Jinja tracing covers normal Jinja environment/template entry points; unusual custom rendering stacks may require a later explicit hook;
+- non-filesystem Jinja templates deliberately produce incomplete provenance;
+- source versions currently use path, nanosecond mtime, and size rather than content hashes;
+- Phase 8 manifests are explicit inputs; Kyth does not execute arbitrary generators;
+- CSS/image narrow updates remain intentionally limited to safe generic mutation paths;
+- JavaScript remains full-reload only unless an external HMR owner is later integrated;
 - CSP sandbox policies that create an opaque origin can still prevent the separate loopback control connection;
 - descriptor/handle transfer has not yet been exercised on every supported operating system.

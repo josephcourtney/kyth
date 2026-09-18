@@ -24,8 +24,6 @@ class ReloadScope(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class InvalidationDecision:
-    """Separate invalidated outputs from the browser action they require."""
-
     invalidated_outputs: tuple[Path, ...]
     scope: ReloadScope
     reload_view_ids: tuple[str, ...] = ()
@@ -40,14 +38,11 @@ def decide_browser_invalidation(
     output_views: Mapping[Path, Collection[str]],
     active_view_ids: Collection[str],
 ) -> InvalidationDecision:
-    """Choose targeted reload only when every changed browser path is a known output."""
     paths = tuple(sorted(set(changed_paths), key=Path.as_posix))
     active = set(active_view_ids)
     known = set(known_outputs)
-
     if not paths:
         return InvalidationDecision((), ReloadScope.NONE, current_view_ids=tuple(sorted(active)))
-
     if any(path.suffix.lower() not in HTML_SUFFIXES or path not in known for path in paths):
         return InvalidationDecision(
             paths,
@@ -56,19 +51,18 @@ def decide_browser_invalidation(
             reason="ambiguous-browser-dependency",
         )
 
-    direct_views: set[str] = set()
-    affected: set[str] = set()
-    for view_ids in output_views.values():
-        direct_views.update(view_ids)
-    for path in paths:
-        affected.update(output_views.get(path, ()))
-
-    direct_views &= active
-    affected &= active
-    unknown = active - direct_views
-    reload_views = affected | unknown
+    direct_views = {
+        view_id
+        for view_ids in output_views.values()
+        for view_id in view_ids
+    } & active
+    affected = {
+        view_id
+        for path in paths
+        for view_id in output_views.get(path, ())
+    } & active
+    reload_views = affected | (active - direct_views)
     current = direct_views - affected
-
     return InvalidationDecision(
         paths,
         ReloadScope.TARGETED if reload_views else ReloadScope.NONE,
@@ -104,6 +98,10 @@ def decide_browser_updates(
     *,
     known_outputs: Collection[Path],
     output_views: Mapping[Path, Collection[str]],
+    known_render_sources: Collection[Path],
+    render_source_views: Mapping[Path, Collection[str]],
+    complete_render_view_ids: Collection[str],
+    deferred_source_views: Mapping[Path, Collection[str]],
     known_resources: Collection[Path],
     resource_views: Mapping[Path, Mapping[str, Collection[BrowserResource]]],
     complete_resource_view_ids: Collection[str],
@@ -115,17 +113,32 @@ def decide_browser_updates(
     if not paths:
         return BrowserUpdateDecision((), (), tuple(sorted(active)), "no-browser-change")
 
-    html_paths, resource_paths = _split_paths(paths)
+    content_paths, resource_paths = _split_paths(
+        paths,
+        known_outputs=known_outputs,
+        known_render_sources=known_render_sources,
+    )
     if _contains_unknown_paths(
-        html_paths,
+        content_paths,
         resource_paths,
         known_outputs=known_outputs,
+        known_render_sources=known_render_sources,
         known_resources=known_resources,
     ):
         return _reload_all(paths, active, reason="ambiguous-browser-dependency")
 
     actions: dict[str, BrowserAction] = {}
-    _merge_html_actions(actions, html_paths, active=active, output_views=output_views)
+    _merge_content_actions(
+        actions,
+        content_paths,
+        active=active,
+        known_outputs=known_outputs,
+        output_views=output_views,
+        known_render_sources=known_render_sources,
+        render_source_views=render_source_views,
+        complete_render_view_ids=complete_render_view_ids,
+        deferred_source_views=deferred_source_views,
+    )
     _merge_resource_actions(
         actions,
         resource_paths,
@@ -136,53 +149,81 @@ def decide_browser_updates(
 
     ordered_actions = tuple(sorted(actions.values(), key=lambda action: action.view_id))
     current = tuple(sorted(active - set(actions)))
-    if any(action.kind is not BrowserActionKind.RELOAD for action in ordered_actions):
-        reason = "narrow-browser-update"
-    elif html_paths and not resource_paths:
-        reason = "known-direct-output"
-    else:
-        reason = "known-browser-dependency"
+    reason = _decision_reason(
+        ordered_actions,
+        content_paths=content_paths,
+        resource_paths=resource_paths,
+        known_render_sources=known_render_sources,
+    )
     return BrowserUpdateDecision(paths, ordered_actions, current, reason)
 
 
-def _split_paths(paths: tuple[Path, ...]) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
-    html_paths = tuple(path for path in paths if path.suffix.lower() in HTML_SUFFIXES)
-    resource_paths = tuple(path for path in paths if path.suffix.lower() not in HTML_SUFFIXES)
-    return html_paths, resource_paths
+def _split_paths(
+    paths: tuple[Path, ...],
+    *,
+    known_outputs: Collection[Path],
+    known_render_sources: Collection[Path],
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    content_known = set(known_outputs) | set(known_render_sources)
+    content = tuple(
+        path
+        for path in paths
+        if path.suffix.lower() in HTML_SUFFIXES or path in content_known
+    )
+    content_set = set(content)
+    resources = tuple(path for path in paths if path not in content_set)
+    return content, resources
 
 
 def _contains_unknown_paths(
-    html_paths: tuple[Path, ...],
+    content_paths: tuple[Path, ...],
     resource_paths: tuple[Path, ...],
     *,
     known_outputs: Collection[Path],
+    known_render_sources: Collection[Path],
     known_resources: Collection[Path],
 ) -> bool:
-    known_output_paths = set(known_outputs)
+    known_content = set(known_outputs) | set(known_render_sources)
     known_resource_paths = set(known_resources)
-    return any(path not in known_output_paths for path in html_paths) or any(
+    return any(path not in known_content for path in content_paths) or any(
         path not in known_resource_paths for path in resource_paths
     )
 
 
-def _merge_html_actions(
+def _merge_content_actions(
     actions: dict[str, BrowserAction],
-    html_paths: tuple[Path, ...],
+    paths: tuple[Path, ...],
     *,
     active: set[str],
+    known_outputs: Collection[Path],
     output_views: Mapping[Path, Collection[str]],
+    known_render_sources: Collection[Path],
+    render_source_views: Mapping[Path, Collection[str]],
+    complete_render_view_ids: Collection[str],
+    deferred_source_views: Mapping[Path, Collection[str]],
 ) -> None:
-    if not html_paths:
-        return
-
-    direct_views = {view_id for view_ids in output_views.values() for view_id in view_ids} & active
-    affected = {
+    known_output_paths = set(known_outputs)
+    known_render_paths = set(known_render_sources)
+    direct_views = {
         view_id
-        for path in html_paths
-        for view_id in output_views.get(path, ())
+        for view_ids in output_views.values()
+        for view_id in view_ids
     } & active
-    for view_id in affected | (active - direct_views):
-        _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))
+    complete_render_views = set(complete_render_view_ids) & active
+
+    for path in paths:
+        precise: set[str] = set()
+        affected: set[str] = set()
+        if path in known_output_paths:
+            precise.update(direct_views)
+            affected.update(output_views.get(path, ()))
+        if path in known_render_paths:
+            precise.update(complete_render_views)
+            affected.update(render_source_views.get(path, ()))
+        precise.update(deferred_source_views.get(path, ()))
+
+        for view_id in (affected & active) | (active - precise):
+            _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))
 
 
 def _merge_resource_actions(
@@ -195,38 +236,19 @@ def _merge_resource_actions(
 ) -> None:
     if not resource_paths:
         return
-
     complete_views = set(complete_resource_view_ids) & active
     for view_id in active - complete_views:
         _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))
-
     for path in resource_paths:
-        _merge_resource_path_actions(
-            actions,
-            path,
-            active=active,
-            complete_views=complete_views,
-            resource_views=resource_views,
-        )
-
-
-def _merge_resource_path_actions(
-    actions: dict[str, BrowserAction],
-    path: Path,
-    *,
-    active: set[str],
-    complete_views: set[str],
-    resource_views: Mapping[Path, Mapping[str, Collection[BrowserResource]]],
-) -> None:
-    for view_id, references in resource_views.get(path, {}).items():
-        if view_id not in active:
-            continue
-        candidate = (
-            _resource_action(path, view_id, references)
-            if view_id in complete_views
-            else BrowserAction(view_id, BrowserActionKind.RELOAD)
-        )
-        _merge_action(actions, candidate)
+        for view_id, references in resource_views.get(path, {}).items():
+            if view_id not in active:
+                continue
+            candidate = (
+                _resource_action(path, view_id, references)
+                if view_id in complete_views
+                else BrowserAction(view_id, BrowserActionKind.RELOAD)
+            )
+            _merge_action(actions, candidate)
 
 
 def _resource_action(
@@ -238,7 +260,6 @@ def _resource_action(
     urls = tuple(sorted({resource.url for resource in resources}))
     kinds = {resource.kind for resource in resources}
     suffix = path.suffix.lower()
-
     if suffix == ".css" and kinds == {BrowserResourceKind.STYLESHEET}:
         return BrowserAction(view_id, BrowserActionKind.CSS_UPDATE, urls)
     if suffix in IMAGE_SUFFIXES and kinds == {BrowserResourceKind.IMAGE}:
@@ -261,6 +282,22 @@ def _merge_action(actions: dict[str, BrowserAction], candidate: BrowserAction) -
         candidate.kind,
         tuple(sorted(set(current.resource_urls) | set(candidate.resource_urls))),
     )
+
+
+def _decision_reason(
+    actions: tuple[BrowserAction, ...],
+    *,
+    content_paths: tuple[Path, ...],
+    resource_paths: tuple[Path, ...],
+    known_render_sources: Collection[Path],
+) -> str:
+    if any(action.kind is not BrowserActionKind.RELOAD for action in actions):
+        return "narrow-browser-update"
+    if content_paths and any(path in set(known_render_sources) for path in content_paths):
+        return "render-provenance"
+    if content_paths and not resource_paths:
+        return "known-direct-output"
+    return "known-browser-dependency"
 
 
 def _reload_all(

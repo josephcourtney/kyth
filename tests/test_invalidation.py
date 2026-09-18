@@ -10,6 +10,7 @@ from kyth.invalidation import (
 )
 from kyth.model import BrowserResource, BrowserResourceKind
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_known_direct_output_reloads_only_affected_and_unknown_views() -> None:
@@ -31,6 +32,7 @@ def test_known_direct_output_reloads_only_affected_and_unknown_views() -> None:
     assert decision.current_view_ids == ("home",)
     assert decision.reason == "known-direct-output"
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_known_inactive_output_does_not_reload_unrelated_direct_views() -> None:
@@ -51,6 +53,7 @@ def test_known_inactive_output_does_not_reload_unrelated_direct_views() -> None:
     assert decision.reload_view_ids == ()
     assert decision.current_view_ids == ("about", "home")
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_unknown_browser_dependency_falls_back_to_all_active_views() -> None:
@@ -67,6 +70,7 @@ def test_unknown_browser_dependency_falls_back_to_all_active_views() -> None:
     assert decision.current_view_ids == ()
     assert decision.reason == "ambiguous-browser-dependency"
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_direct_stylesheet_change_uses_css_update_for_complete_view() -> None:
@@ -75,6 +79,10 @@ def test_direct_stylesheet_change_uses_css_update_for_complete_view() -> None:
         (stylesheet,),
         known_outputs=(),
         output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
         known_resources={stylesheet},
         resource_views={
             stylesheet: {
@@ -99,6 +107,7 @@ def test_direct_stylesheet_change_uses_css_update_for_complete_view() -> None:
     ]
     assert decision.current_view_ids == ("other",)
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_observed_only_resource_and_incomplete_view_reload_conservatively() -> None:
@@ -107,6 +116,10 @@ def test_observed_only_resource_and_incomplete_view_reload_conservatively() -> N
         (stylesheet,),
         known_outputs=(),
         output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
         known_resources={stylesheet},
         resource_views={
             stylesheet: {
@@ -128,6 +141,7 @@ def test_observed_only_resource_and_incomplete_view_reload_conservatively() -> N
     ]
     assert decision.current_view_ids == ()
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_mixed_css_and_image_changes_collapse_to_one_reload_per_view() -> None:
@@ -137,6 +151,10 @@ def test_mixed_css_and_image_changes_collapse_to_one_reload_per_view() -> None:
         (stylesheet, image),
         known_outputs=(),
         output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
         known_resources={stylesheet, image},
         resource_views={
             stylesheet: {
@@ -164,6 +182,7 @@ def test_mixed_css_and_image_changes_collapse_to_one_reload_per_view() -> None:
         ("view", BrowserActionKind.RELOAD)
     ]
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_unknown_resource_change_keeps_phase_4_full_reload_fallback() -> None:
@@ -172,6 +191,10 @@ def test_unknown_resource_change_keeps_phase_4_full_reload_fallback() -> None:
         (script,),
         known_outputs=(),
         output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
         known_resources=(),
         resource_views={},
         complete_resource_view_ids={"first", "second"},
@@ -184,6 +207,7 @@ def test_unknown_resource_change_keeps_phase_4_full_reload_fallback() -> None:
     ]
     assert decision.current_view_ids == ()
 
+
 @pytest.mark.unit
 @pytest.mark.small
 def test_direct_image_change_uses_asset_update_for_complete_view() -> None:
@@ -192,6 +216,10 @@ def test_direct_image_change_uses_asset_update_for_complete_view() -> None:
         (image,),
         known_outputs=(),
         output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
         known_resources={image},
         resource_views={
             image: {
@@ -214,3 +242,55 @@ def test_direct_image_change_uses_asset_update_for_complete_view() -> None:
             ("http://127.0.0.1:8000/static/logo.svg",),
         )
     ]
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_complete_render_provenance_reloads_only_dependent_view() -> None:
+    first = Path("/templates/first.html")
+    decision = decide_browser_updates(
+        (first,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources={first, Path("/templates/second.html")},
+        render_source_views={
+            first: ("first-view",),
+            Path("/templates/second.html"): ("second-view",),
+        },
+        complete_render_view_ids={"first-view", "second-view"},
+        deferred_source_views={},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"first-view", "second-view"},
+    )
+
+    assert [(action.view_id, action.kind) for action in decision.actions] == [
+        ("first-view", BrowserActionKind.RELOAD)
+    ]
+    assert decision.current_view_ids == ("second-view",)
+    assert decision.reason == "render-provenance"
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_manifest_generated_views_are_deferred_for_shared_render_source() -> None:
+    template = Path("/templates/base.html")
+    decision = decide_browser_updates(
+        (template,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources={template},
+        render_source_views={template: ("dynamic",)},
+        complete_render_view_ids={"dynamic"},
+        deferred_source_views={template: ("generated",)},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"dynamic", "generated"},
+    )
+
+    assert [(action.view_id, action.kind) for action in decision.actions] == [
+        ("dynamic", BrowserActionKind.RELOAD)
+    ]
+    assert decision.current_view_ids == ("generated",)

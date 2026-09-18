@@ -38,6 +38,14 @@ def _parser() -> argparse.ArgumentParser:
         help="additional path to ignore; may be repeated",
     )
     parser.add_argument(
+        "--manifest",
+        dest="manifest_paths",
+        action="append",
+        type=Path,
+        default=[],
+        help="generated dependency manifest; may be repeated",
+    )
+    parser.add_argument(
         "--control-port",
         type=int,
         default=0,
@@ -59,6 +67,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
         watch_roots=watch_roots,
         ignored_paths=tuple(args.ignored_paths),
         control_port=args.control_port,
+        manifest_paths=tuple(args.manifest_paths),
     )
 
     with Supervisor(config) as supervisor, contextlib.suppress(KeyboardInterrupt):

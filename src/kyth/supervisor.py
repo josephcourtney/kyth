@@ -8,11 +8,17 @@ from typing import TYPE_CHECKING, Self
 from kyth.changes import ChangeSet, classify_batch
 from kyth.control import ControlService
 from kyth.invalidation import BrowserActionKind, BrowserUpdateDecision, decide_browser_updates
-from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch
+from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch, FileOperation
 from kyth.process.manager import ChildProcess
 from kyth.process.socket import DEFAULT_BACKLOG, bind_listening_socket
 from kyth.protocol import ControlEvent
-from kyth.provenance import DirectOutputIndex, DirectResourceIndex
+from kyth.provenance import (
+    DirectOutputIndex,
+    DirectResourceIndex,
+    GeneratedManifestIndex,
+    ManifestError,
+    RenderProvenanceIndex,
+)
 from kyth.watcher import BatchSource, FileWatcher, WatcherConfig
 
 if TYPE_CHECKING:
@@ -39,6 +45,7 @@ class SupervisorConfig:
     control_port: int = 0
     view_inactivity_timeout: float = 300.0
     generation_update_timeout: float = 2.0
+    manifest_paths: tuple[Path, ...] = ()
 
 
 class Supervisor:
@@ -52,9 +59,11 @@ class Supervisor:
         self._socket: socket.socket | None = None
         self._child: ChildProcess | None = None
         self._control: ControlService | None = None
-        roots = config.watch_roots or (Path.cwd(),)
+        roots = _development_roots(config)
         self._direct_outputs = DirectOutputIndex(roots)
         self._direct_resources = DirectResourceIndex(roots)
+        self._render_provenance = RenderProvenanceIndex()
+        self._generated = GeneratedManifestIndex(config.manifest_paths)
 
     @property
     def address(self) -> tuple[str, int]:
@@ -78,6 +87,7 @@ class Supervisor:
         if self._socket is not None:
             return
 
+        self._generated.load_all()
         app_socket = bind_listening_socket(self.config.host, self.config.port, backlog=self.config.backlog)
         control: ControlService | None = None
         try:
@@ -121,7 +131,7 @@ class Supervisor:
         self.state = replace(self.state, child=ChildState(ChildStatus.ABSENT, exit_code=exit_code))
 
     def poll(self) -> None:
-        self._refresh_direct_provenance()
+        self._refresh_provenance()
         if self._child is None or self.state.child.status is not ChildStatus.READY or self._child.is_alive:
             return
         exit_code = self._child.exit_code
@@ -236,14 +246,18 @@ class Supervisor:
     def _handle_change_cycle(self, initial_batch: FileBatch, source: BatchSource) -> None:
         batch = initial_batch
         while True:
-            self._refresh_direct_provenance()
+            self._refresh_provenance()
+            self._refresh_changed_manifests(batch.paths)
+            stale_outputs = self._generated.mark_sources_changed(batch.paths)
             changes = classify_batch(batch)
-            self._log_change_set(changes)
+            relevant_paths = self._relevant_browser_paths(changes)
+            self._log_change_set(changes, relevant_paths, stale_outputs)
+            self._generated.mark_outputs_updated(relevant_paths)
 
             if changes.requires_restart:
                 self.restart_child()
-            elif changes.browser_paths:
-                self._reload_for_browser_change(changes.browser_paths)
+            elif relevant_paths:
+                self._reload_for_browser_change(relevant_paths)
             else:
                 return
 
@@ -286,14 +300,18 @@ class Supervisor:
         )
 
     def _browser_updates(self, changed_paths: tuple[Path, ...]) -> BrowserUpdateDecision:
-        self._refresh_direct_provenance()
+        self._refresh_provenance()
         control = self._require_control()
         views = control.views.snapshot()
         normalized = tuple(self._direct_outputs.normalize_changed_path(path) for path in changed_paths)
         return decide_browser_updates(
             normalized,
-            known_outputs=self._direct_outputs.known_outputs,
+            known_outputs=self._direct_outputs.known_outputs | self._generated.known_outputs,
             output_views=self._direct_outputs.output_views,
+            known_render_sources=self._render_provenance.known_sources,
+            render_source_views=self._render_provenance.stale_source_views(normalized),
+            complete_render_view_ids=self._render_provenance.complete_view_ids,
+            deferred_source_views=self._generated_source_views(),
             known_resources=self._direct_resources.known_resources,
             resource_views=self._direct_resources.resource_views,
             complete_resource_view_ids=self._direct_resources.complete_view_ids,
@@ -321,7 +339,7 @@ class Supervisor:
                 event = ControlEvent.asset_update(generation, resources=action.resource_urls)
             control.publish(event, view_ids=(action.view_id,))
 
-    def _refresh_direct_provenance(self) -> None:
+    def _refresh_provenance(self) -> None:
         if self._control is None:
             return
         views = self._control.views.snapshot()
@@ -335,12 +353,76 @@ class Supervisor:
                 if view.resources_complete is True
             ),
         )
+        self._render_provenance.reconcile(
+            self._control.renders.snapshot(),
+            {
+                view.view_id: view.render_id
+                for view in views
+                if view.render_id is not None
+            },
+        )
+
+    def _generated_source_views(self) -> dict[Path, tuple[str, ...]]:
+        output_views = self._direct_outputs.output_views
+        manifest_views = {
+            view_id
+            for output in self._generated.known_outputs
+            for view_id in output_views.get(output, ())
+        }
+        return {
+            source: tuple(sorted(manifest_views))
+            for source in self._generated.known_sources
+        }
+
+    def _relevant_browser_paths(self, changes: ChangeSet) -> tuple[Path, ...]:
+        manifest_paths = self._generated.manifest_paths
+        manifest_sources = self._generated.known_sources
+        render_sources = self._render_provenance.known_sources
+        direct_outputs = self._direct_outputs.known_outputs
+        direct_resources = self._direct_resources.known_resources
+
+        relevant: set[Path] = set()
+        for path in changes.batch.paths:
+            normalized = self._direct_outputs.normalize_changed_path(path)
+            if normalized in manifest_paths:
+                continue
+            if normalized in self._generated.known_outputs and not self._generated_output_ready(
+                changes.batch,
+                normalized,
+            ):
+                continue
+            if normalized in render_sources:
+                relevant.add(path)
+                continue
+            if normalized in manifest_sources and normalized not in direct_outputs | direct_resources:
+                continue
+            if path in changes.browser_paths:
+                relevant.add(path)
+        return tuple(sorted(relevant, key=Path.as_posix))
+
+    def _generated_output_ready(self, batch: FileBatch, output: Path) -> bool:
+        return any(
+            self._direct_outputs.normalize_changed_path(event.path) == output
+            and event.operation is not FileOperation.DELETED
+            for event in batch.events
+        )
+
+    def _refresh_changed_manifests(self, changed_paths: tuple[Path, ...]) -> None:
+        try:
+            reloaded = self._generated.reload_changed(changed_paths)
+        except ManifestError as exc:
+            logger.error("generated dependency manifest reload failed: %s", exc)
+            return
+        if reloaded:
+            logger.info(
+                "reloaded generated dependency manifest(s): %s",
+                ", ".join(str(path) for path in reloaded),
+            )
 
     def _create_watcher(self) -> FileWatcher:
-        roots = self.config.watch_roots or (Path.cwd(),)
         return FileWatcher(
             WatcherConfig(
-                roots=roots,
+                roots=_development_roots(self.config),
                 ignored_paths=self.config.ignored_paths,
                 debounce_ms=self.config.watch_debounce_ms,
                 step_ms=self.config.watch_step_ms,
@@ -348,16 +430,25 @@ class Supervisor:
         )
 
     @staticmethod
-    def _log_change_set(changes: ChangeSet) -> None:
+    def _log_change_set(
+        changes: ChangeSet,
+        relevant_paths: tuple[Path, ...],
+        stale_outputs: tuple[Path, ...],
+    ) -> None:
         rendered = ", ".join(_display_path(path) for path in changes.batch.paths)
         if changes.requires_restart:
             logger.info("%s changed -> restart then browser reload", rendered)
             return
-
-        if changes.browser_paths:
+        if relevant_paths:
             logger.info("%s changed -> browser invalidation", rendered)
             return
-
+        if stale_outputs:
+            logger.info(
+                "%s changed -> %d generated output(s) stale; waiting for rebuild",
+                rendered,
+                len(stale_outputs),
+            )
+            return
         logger.info("%s changed -> no action", rendered)
 
     def _stop_owned_child_if_needed(self) -> int | None:
@@ -385,6 +476,18 @@ class Supervisor:
             msg = "control service is not open"
             raise RuntimeError(msg)
         return self._control
+
+
+def _development_roots(config: SupervisorConfig) -> tuple[Path, ...]:
+    roots = [
+        path.expanduser().resolve(strict=False)
+        for path in (config.watch_roots or (Path.cwd(),))
+    ]
+    for manifest_path in config.manifest_paths:
+        parent = manifest_path.expanduser().resolve(strict=False).parent
+        if not any(parent.is_relative_to(root) for root in roots):
+            roots.append(parent)
+    return tuple(roots)
 
 
 def _display_path(path: Path) -> str:

@@ -8,6 +8,8 @@ from threading import Lock
 from typing import Any
 
 from kyth.injection.html import browser_script, inject_script, rewrite_headers
+from kyth.injection.jinja import capture_render, install_jinja_tracing
+from kyth.injection.reporting import report_render_record
 
 ASGIMessage = dict[str, Any]
 ASGIScope = dict[str, Any]
@@ -33,6 +35,7 @@ class HTMLInjectionMiddleware:
         self._token = config.token
         self._generation = config.generation
         self._generation_lock = Lock()
+        install_jinja_tracing()
 
     def set_generation(self, generation: int) -> None:
         """Advance the generation embedded into subsequently rendered documents."""
@@ -54,14 +57,25 @@ class HTMLInjectionMiddleware:
             return
 
         request_scope = _without_accept_encoding(scope)
+        generation = self.generation
+        render_id = secrets.token_urlsafe(12)
         injector = _ResponseInjector(
             send=send,
             control_url=self._control_url,
             token=self._token,
-            generation=self.generation,
+            generation=generation,
+            render_id=render_id,
             method=str(scope.get("method", "GET")),
         )
-        await self._app(request_scope, receive, injector.send)
+        with capture_render(render_id, generation) as trace:
+            await self._app(request_scope, receive, injector.send)
+
+        if injector.injected and trace.used:
+            await report_render_record(
+                self._control_url,
+                self._token,
+                trace.to_record(),
+            )
 
 
 class _ResponseInjector:
@@ -72,15 +86,22 @@ class _ResponseInjector:
         control_url: str,
         token: str,
         generation: int,
+        render_id: str,
         method: str,
     ) -> None:
         self._send = send
         self._control_url = control_url
         self._token = token
         self._generation = generation
+        self._render_id = render_id
         self._method = method.upper()
         self._start: ASGIMessage | None = None
         self._passthrough = False
+        self._injected = False
+
+    @property
+    def injected(self) -> bool:
+        return self._injected
 
     async def send(self, message: ASGIMessage) -> None:
         message_type = message.get("type")
@@ -105,18 +126,18 @@ class _ResponseInjector:
 
         body = bytes(message.get("body", b""))
         nonce = secrets.token_urlsafe(16)
-        render_id = secrets.token_urlsafe(12)
         script = browser_script(
             control_url=self._control_url,
             token=self._token,
             generation=self._generation,
-            render_id=render_id,
+            render_id=self._render_id,
             nonce=nonce,
         )
         injected = inject_script(body, script)
         start = self._rewritten_start(body_length=len(injected), nonce=nonce)
         await self._send(start)
         await self._send({**message, "body": injected})
+        self._injected = True
 
     async def _flush_start(self) -> None:
         if self._start is not None:

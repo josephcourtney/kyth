@@ -172,6 +172,7 @@ Phase 3 defines the control HTTP surface as:
 
 - `GET /events?token=<session-token>&view_id=<view-id>` opens the SSE stream and immediately emits a `sync` event for the current generation;
 - `POST /views?token=<session-token>` registers or updates one browser view using a JSON object containing `view_id`, `url`, `generation`, optional `render_id`, and Phase 6 resource snapshot fields `resources`/`resources_complete`;
+- `POST /renders?token=<session-token>` accepts child-process render provenance records without browser CORS access;
 - `OPTIONS /views?token=<session-token>` supports the cross-origin registration preflight;
 - `GET /client.js?token=<session-token>` serves the external browser client with no-store caching;
 - `GET /health?token=<session-token>` exposes minimal development diagnostics for the current generation and active-view count.
@@ -288,19 +289,62 @@ Browser invalidation and presentation are separate decisions:
 
 Targeted events are delivered by view identity through the persistent SSE broker. The global development generation still advances for a coherent browser-facing change, but a generation advance alone does not imply that every view is stale. The control registry records views requiring no browser-side action as valid through that generation. Views receiving reload or narrow resource updates remain stale until navigation or successful resource mutation re-registers them. On SSE reconnect, `sync` therefore carries a per-view `reload_required` decision so a missed/failed action recovers conservatively while an unrelated prior change does not cause a delayed reload.
 
-For generated sites, browser synchronization normally waits for the generated output to change rather than reacting immediately to its source input.
+For generated sites, browser synchronization waits for the generated output to change rather than reacting immediately to its source input.
 
-A generator may optionally provide source-to-output dependencies so Kyth can mark outputs stale before or independently of regeneration; that manifest behavior remains Phase 8.
+Phase 8 accepts explicit generated-site dependency manifests via repeated `--manifest PATH` options. Manifest directories are added to the effective development roots automatically, so their sources, outputs, and manifest file remain observable without a separate `--watch`.
+
+The stable V1 manifest schema is JSON:
+
+```json
+{
+  "version": 1,
+  "outputs": [
+    {
+      "output": "public/index.html",
+      "sources": [
+        "content/index.md",
+        "templates/base.html"
+      ]
+    }
+  ]
+}
+```
+
+Manifest source/output paths are normalized relative paths beneath the manifest directory. V1 manifest outputs are HTML documents. Paths may not be absolute or escape the manifest directory, output entries are unique, and each output declares at least one source.
+
+A source change marks every dependent generated output stale but does not itself disturb the browser. When the generated output later receives an add/modify event, Kyth clears that stale state and applies the normal direct-output/view invalidation rules. A deletion-only output event is not considered ready and therefore does not reload the browser into a transiently missing build artifact.
+
+Inactive stale outputs remain stale without eager browser work. If the output is rebuilt while no dependent view is active, no navigation is required.
 
 ## 18. Template provenance
 
-Template-engine support is provided through dependency providers rather than hard-coded into the supervisor.
+Phase 7 introduces an adapter-neutral render provenance record:
 
-A Jinja provider should capture actual runtime template participation where feasible and supplement it with static inheritance/include/import analysis.
+- opaque `render_id`;
+- development generation;
+- adapter name;
+- source dependency set;
+- per-source version metadata (`mtime_ns` and size where available);
+- a completeness flag.
 
-Dynamic template names that cannot be determined statically must not be treated as absent dependencies. Runtime capture or conservative fallback applies.
+The injected HTML client already carries the opaque `render_id`; browser registration therefore associates an active view with the exact server render that produced it. Recent render records are kept in a bounded supervisor-owned registry.
 
-Adapter failure must degrade to conservative page reload rather than stale output.
+The first adapter is zero-touch Jinja tracing. When Jinja is installed in the application environment, the child patches Jinja's normal template lookup/render entry points once and uses a request-scoped context variable to record concrete templates actually used by the request. This captures the root template and runtime template lookups used by inheritance, includes, imports, and runtime-selected names through Jinja's normal environment lookup path.
+
+Every concrete filesystem-backed template is recorded with its source version. Templates without a stable filesystem filename mark the render incomplete instead of pretending the dependency is absent.
+
+After an injectable HTML response completes, the child posts the generic render record to the supervisor-owned `/renders` endpoint. Provenance reporting is development metadata: a reporting transport failure does not fail the application response.
+
+For a changed source known to render provenance, Kyth first compares each recorded source version with the current file. A view already rendered from the current version is not invalidated again.
+
+Then:
+
+- active views whose complete render records include a stale version of that source reload;
+- complete render views that do not include the source are marked current without navigation;
+- views lacking complete render provenance remain conservative and reload;
+- if a source also feeds generated outputs through a Phase 8 manifest, those generated views wait for output regeneration rather than reloading from the source change alone.
+
+This interface is independent of Jinja; later adapters can emit the same render record without changing supervisor invalidation policy.
 
 ## 19. Browser-consumed data
 

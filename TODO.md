@@ -1,11 +1,7 @@
 # TODO
 
-- implement Phase 7 render provenance API independent of any specific template engine;
-- associate opaque render identities with source dependency sets and source versions;
-- implement the first Jinja adapter without requiring normal application-source changes where practical;
-- capture Jinja inheritance, includes, imports, and runtime-selected template dependencies where feasible;
-- invalidate only active renders that depend on a changed template;
-- retain conservative route/application-scope reload when runtime dependency capture is incomplete;
-- add tests proving an unrelated template change does not disturb the active view while a shared-template change does;
-- preserve the Phase 1-6 zero-touch fallback when no template adapter applies;
-- run `just check` and resolve any platform/toolchain issues exposed by Phase 6.
+- run `just check` and resolve any lint/type/test issues exposed by Phases 7 and 8;
+- rehearse the complete V1 acceptance behavior with a small Jinja app and a generated-site fixture;
+- decide whether Phase 9 needs any concrete application hook before adding extension surface;
+- if a concrete need exists, implement the smallest typed hook while preserving the zero-touch fallback;
+- otherwise prepare the ground-up V1 branch for merge/release documentation.

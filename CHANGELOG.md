@@ -23,20 +23,21 @@ Items should be categorized under these headings:
 - add Phase 2 filesystem observation with `watchfiles`, configurable watch/ignore paths, deterministic change batches, default restart classification, restart coalescing, and concise change-decision logging
 - add the Phase 3 supervisor-owned loopback control plane with token/origin restrictions, generation-aware SSE, browser-view registration, reconnect synchronization, inactive-view cleanup, and lifecycle-independent control state
 - add Phase 4 transparent HTML injection, external browser client serving, per-tab registration, generation-aware reloads, CSP/header rewriting, and readiness-gated server-restart reload events
-- add acknowledged live-child generation updates so browser-facing changes can reload current content without restarting Python
 - add Phase 5 direct HTML output provenance, explicit invalidation decisions, targeted per-view SSE delivery, remembered inactive outputs, and per-view reconnect staleness
-- add Phase 6 browser resource snapshots combining direct DOM references with Resource Timing dependency evidence
-- add targeted CSS replacement and safe direct image/SVG cache busting with automatic full-reload fallback
-- add per-view resource completeness tracking so incomplete dependency snapshots remain conservative
+- add Phase 6 browser resource snapshots, targeted stylesheet replacement, and safe direct image/SVG cache busting
+- add Phase 7 adapter-neutral render provenance records with source versions, bounded supervisor storage, and per-view render invalidation
+- add zero-touch request-scoped Jinja tracing for filesystem-backed runtime template dependencies
+- add render source-version comparison so watcher batches do not reload views that already rendered the current template version
+- add Phase 8 stable version-1 generated dependency manifests with source-to-output staleness tracking
+- add repeated `--manifest` CLI configuration and automatic manifest-directory watch roots
+- add generated-output readiness handling that waits for add/modify after transient deletion
 
 ### Changed
 
-- replace the unused `watchdog` development dependency with the runtime `watchfiles` dependency used by Kyth
-- load the ASGI import target in the child before Uvicorn startup so Kyth can install the transparent development wrapper without application changes
-- make control-plane generation commits silent by default; browser reload/sync actions are emitted explicitly for the views affected by an invalidation decision
-- use `http.HTTPStatus` constants consistently for HTTP response semantics
-- collapse mixed browser changes into at most one action per view per coherent generation; reload dominates incompatible narrow update kinds
-- keep JavaScript/font/observed-only resource changes on the full-reload path rather than implementing speculative generic HMR
+- make control-plane generation commits explicit per affected view rather than treating every global generation as universally stale
+- keep narrow-update targets stale until browser success is confirmed by re-registration
+- treat generated source changes as output invalidation rather than immediate browser synchronization
+- keep Jinja and generated-site support optional: applications without either retain the Phase 1-6 zero-touch fallback
 
 ### Deprecated
 
@@ -44,14 +45,15 @@ Items should be categorized under these headings:
 
 ### Fixed
 
+- resolve Phase 6 request-handler lint failures by factoring registration parsing and using `TypeError` for invalid JSON value types
+- preserve the Phase 5 `known-direct-output` diagnostic reason for direct HTML invalidation
 - isolate each spawned application child in a fresh bytecode-cache directory so rapid same-size Python edits cannot restart into stale timestamp/size-validated bytecode
-- fix Phase 3 control-plane lint and typing issues around HTTP handler overrides, SSE stream setup, static logging policy, and watcher context-manager documentation
-- fix spawned-child socket transfer so socket subclasses do not need to be pickled and narrow multiprocessing context typing to the spawn context actually used
+- fix spawned-child socket transfer so socket subclasses do not need to be pickled
 - keep injection test token fixtures and URL expectations derived from the same value
-- keep resource-update views stale until the browser confirms successful mutation by re-registering, preserving conservative reconnect recovery
 
 ### Security
 
+- keep render provenance registration child-only by rejecting browser-Origin requests to `/renders`
 - constrain the injected browser client to a nonce-bearing CSP allowance and the exact loopback control origin while retaining token and origin checks on the control service
 
 ## [0.0.0] - 2026-04-15
