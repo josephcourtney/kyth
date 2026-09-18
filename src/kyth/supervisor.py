@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
@@ -83,7 +82,7 @@ class Supervisor:
                 inactivity_timeout=self.config.view_inactivity_timeout,
             )
             control.start()
-        except Exception:  # noqa: BLE001 - both sockets must be released for any startup failure
+        except Exception:
             if control is not None:
                 control.close()
             app_socket.close()
@@ -151,13 +150,13 @@ class Supervisor:
         try:
             if self._child is not None:
                 self.stop_child()
-        except Exception as exc:  # noqa: BLE001 - cleanup must continue before re-raising child failure
+        except Exception as exc:  # ruff: ignore[blind-except] - cleanup must continue before re-raising child failure
             child_error = exc
 
         try:
             if self._control is not None:
                 self._control.close()
-        except Exception as exc:  # noqa: BLE001 - application socket must still be released
+        except Exception as exc:  # ruff: ignore[blind-except] - application socket must still be released
             control_error = exc
         finally:
             self._control = None
@@ -247,11 +246,7 @@ class Supervisor:
             batch = pending
 
     def _reload_for_browser_change(self) -> None:
-        if (
-            self._child is None
-            or self.state.child.status is not ChildStatus.READY
-            or self._control is None
-        ):
+        if self._child is None or self.state.child.status is not ChildStatus.READY or self._control is None:
             logger.info("browser-facing change deferred because no application child is ready")
             return
 

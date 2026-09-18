@@ -36,12 +36,10 @@ def _batch(path: str) -> FileBatch:
 @pytest.mark.small
 def test_restart_cycle_coalesces_pending_restart_changes() -> None:
     supervisor = Supervisor(SupervisorConfig("example:app"))
-    source = _PendingBatches(
-        [
-            _batch("/project/second.py").merged(_batch("/project/third.py")),
-            None,
-        ]
-    )
+    source = _PendingBatches([
+        _batch("/project/second.py").merged(_batch("/project/third.py")),
+        None,
+    ])
 
     with patch.object(supervisor, "restart_child", return_value=True) as restart:
         supervisor._handle_change_cycle(_batch("/project/first.py"), source)

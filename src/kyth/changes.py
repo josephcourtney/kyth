@@ -2,34 +2,35 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from kyth.model import FileBatch
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from kyth.model import FileBatch
 
 PYTHON_SUFFIXES = frozenset({".py", ".pyi", ".pyx"})
-BROWSER_SUFFIXES = frozenset(
-    {
-        ".css",
-        ".gif",
-        ".htm",
-        ".html",
-        ".ico",
-        ".jpeg",
-        ".jpg",
-        ".js",
-        ".json",
-        ".map",
-        ".mjs",
-        ".cjs",
-        ".otf",
-        ".png",
-        ".svg",
-        ".ttf",
-        ".webp",
-        ".woff",
-        ".woff2",
-    }
-)
+BROWSER_SUFFIXES = frozenset({
+    ".css",
+    ".gif",
+    ".htm",
+    ".html",
+    ".ico",
+    ".jpeg",
+    ".jpg",
+    ".js",
+    ".json",
+    ".map",
+    ".mjs",
+    ".cjs",
+    ".otf",
+    ".png",
+    ".svg",
+    ".ttf",
+    ".webp",
+    ".woff",
+    ".woff2",
+})
 RESTART_FILENAMES = frozenset({"pyproject.toml"})
 
 

@@ -98,7 +98,6 @@ def _request(address: tuple[str, int]) -> str:
         connection.close()
 
 
-
 def _request_response(address: tuple[str, int], path: str) -> tuple[int, dict[str, str], bytes]:
     connection = http.client.HTTPConnection(*address, timeout=2.0)
     try:
@@ -130,7 +129,7 @@ def _control_health(address: tuple[str, int], token: str) -> dict[str, object]:
         assert response.status == HTTPStatus.OK
         payload = json.loads(response.read())
         assert isinstance(payload, dict)
-        return cast(dict[str, object], payload)
+        return cast("dict[str, object]", payload)
     finally:
         connection.close()
 
@@ -254,7 +253,6 @@ def test_shutdown_is_bounded_when_lifespan_hangs(tmp_path: Path) -> None:
         sys.path.remove(str(tmp_path))
 
 
-
 @pytest.mark.system
 @pytest.mark.medium
 def test_control_plane_survives_application_child_restart(tmp_path: Path) -> None:
@@ -278,7 +276,6 @@ def test_control_plane_survives_application_child_restart(tmp_path: Path) -> Non
             assert _control_health(control_address, control_token)["generation"] == 2
     finally:
         sys.path.remove(str(tmp_path))
-
 
 
 @pytest.mark.system

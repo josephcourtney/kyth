@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, replace
 from threading import Lock
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,10 +54,7 @@ class ViewRegistry:
         now = self._clock()
         with self._lock:
             current = self._views.get(view_id)
-            if current is None:
-                current = BrowserView(view_id, "", 0, None, now)
-            else:
-                current = replace(current, last_seen=now)
+            current = BrowserView(view_id, "", 0, None, now) if current is None else replace(current, last_seen=now)
             self._views[view_id] = current
             return current
 

@@ -75,7 +75,7 @@ class _ControlHTTPServer(ThreadingHTTPServer):
 class _ControlRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    def do_OPTIONS(self) -> None:  # noqa: N802 - stdlib HTTP handler API
+    def do_OPTIONS(self) -> None:
         authorized, origin = self._authorize_request()
         if not authorized:
             return
@@ -89,7 +89,7 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def do_POST(self) -> None:  # noqa: N802 - stdlib HTTP handler API
+    def do_POST(self) -> None:
         authorized, origin = self._authorize_request()
         if not authorized:
             return
@@ -118,7 +118,7 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
         )
         self._send_json(HTTPStatus.OK, _view_payload(view), origin=origin)
 
-    def do_GET(self) -> None:  # noqa: N802 - stdlib HTTP handler API
+    def do_GET(self) -> None:
         authorized, origin = self._authorize_request()
         if not authorized:
             return
@@ -142,7 +142,7 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_status(HTTPStatus.NOT_FOUND, origin=origin)
 
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - stdlib override name
+    def log_message(self, format: str, *args: object) -> None:  # ruff: ignore[builtin-argument-shadowing] - stdlib override name
         logger.debug(
             "control request: command=%s path=%s message=%s args=%r",
             self.command,
@@ -153,7 +153,7 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
 
     @property
     def _control_server(self) -> _ControlHTTPServer:
-        return cast(_ControlHTTPServer, self.server)
+        return cast("_ControlHTTPServer", self.server)
 
     @property
     def _state(self) -> _ControlState:
@@ -236,7 +236,7 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(value, dict):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "request body must be a JSON object"}, origin=origin)
             return None
-        return cast(dict[str, object], value)
+        return cast("dict[str, object]", value)
 
     def _send_javascript(self, source: str, *, origin: str | None) -> None:
         body = source.encode()
@@ -310,7 +310,7 @@ class ControlService:
 
     @property
     def address(self) -> tuple[str, int]:
-        host, port = cast(tuple[str, int], self._server.server_address)
+        host, port = cast("tuple[str, int]", self._server.server_address)
         return host, port
 
     @property

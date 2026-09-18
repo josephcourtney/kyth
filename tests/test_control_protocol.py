@@ -47,14 +47,12 @@ def test_sse_encoding_contains_generation_event_and_structured_data() -> None:
 def test_registration_and_sse_generation_sync() -> None:
     with ControlService(generation=4) as service:
         registration = http.client.HTTPConnection(*service.address, timeout=2.0)
-        body = json.dumps(
-            {
-                "view_id": "view-a",
-                "url": f"{LOOPBACK_ORIGIN}/page",
-                "generation": 3,
-                "render_id": None,
-            }
-        )
+        body = json.dumps({
+            "view_id": "view-a",
+            "url": f"{LOOPBACK_ORIGIN}/page",
+            "generation": 3,
+            "render_id": None,
+        })
         registration.request(
             "POST",
             _view_path(service),
@@ -148,7 +146,6 @@ def test_preflight_reflects_only_allowed_loopback_origin() -> None:
         connection.close()
 
 
-
 @pytest.mark.integration
 @pytest.mark.medium
 def test_control_service_serves_token_gated_browser_client() -> None:
@@ -162,6 +159,6 @@ def test_control_service_serves_token_gated_browser_client() -> None:
         assert response.getheader("Content-Type") == "text/javascript; charset=utf-8"
         assert response.getheader("Cache-Control") == "no-store"
         assert "new EventSource" in body
-        assert 'fetch(url, {' in body
+        assert "fetch(url, {" in body
         assert 'addEventListener("reload"' in body
         connection.close()

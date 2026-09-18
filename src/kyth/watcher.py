@@ -42,10 +42,7 @@ class WatcherConfig:
 
 
 def normalize_changes(changes: set[tuple[Change, str]]) -> FileBatch:
-    events = {
-        FileEvent(path=Path(raw_path), operation=FileOperation(change.name))
-        for change, raw_path in changes
-    }
+    events = {FileEvent(path=Path(raw_path), operation=FileOperation(change.name)) for change, raw_path in changes}
     return FileBatch.from_events(events)
 
 
@@ -142,7 +139,7 @@ class FileWatcher:
                 batch = normalize_changes(changes)
                 if batch.events:
                     self._queue.put(batch)
-        except Exception as exc:  # noqa: BLE001 - thread failures must be propagated to the supervisor
+        except Exception as exc:  # ruff: ignore[blind-except] - thread failures must be propagated to the supervisor
             self._error = exc
 
     def _raise_if_failed(self) -> None:

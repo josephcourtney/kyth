@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import html
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
-CACHE_VALIDATOR_HEADERS = frozenset(
-    {
-        b"content-digest",
-        b"content-md5",
-        b"digest",
-        b"etag",
-        b"last-modified",
-    }
-)
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+CACHE_VALIDATOR_HEADERS = frozenset({
+    b"content-digest",
+    b"content-md5",
+    b"digest",
+    b"etag",
+    b"last-modified",
+})
 
 
 def browser_script(
@@ -32,10 +33,7 @@ def browser_script(
         "data-kyth-generation": str(generation),
         "data-kyth-render-id": render_id,
     }
-    rendered = " ".join(
-        f'{name}="{html.escape(value, quote=True)}"'
-        for name, value in attributes.items()
-    )
+    rendered = " ".join(f'{name}="{html.escape(value, quote=True)}"' for name, value in attributes.items())
     return f"<script {rendered}></script>".encode()
 
 
@@ -123,7 +121,4 @@ def _merge_sources(existing: list[str], *additional: str) -> list[str]:
 
 
 def _render_csp(directives: dict[str, list[str]]) -> str:
-    return "; ".join(
-        " ".join((name, *sources)) if sources else name
-        for name, sources in directives.items()
-    )
+    return "; ".join(" ".join((name, *sources)) if sources else name for name, sources in directives.items())

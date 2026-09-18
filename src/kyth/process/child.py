@@ -122,4 +122,4 @@ def _load_application(target: str) -> ASGIApp:
     if not callable(value):
         msg = f"ASGI target is not callable: {target!r}"
         raise TypeError(msg)
-    return cast(ASGIApp, value)
+    return cast("ASGIApp", value)

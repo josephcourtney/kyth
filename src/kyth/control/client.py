@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-CLIENT_JAVASCRIPT = r"""
+CLIENT_JAVASCRIPT = (
+    r"""
 (() => {
   const script = document.currentScript;
   if (!(script instanceof HTMLScriptElement)) {
@@ -131,4 +132,6 @@ CLIENT_JAVASCRIPT = r"""
     reloadForGeneration(generationFromEvent(event));
   });
 })();
-""".strip() + "\n"
+""".strip()
+    + "\n"
+)

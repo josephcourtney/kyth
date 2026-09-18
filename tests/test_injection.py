@@ -10,7 +10,7 @@ from kyth.injection import HTMLInjectionMiddleware, InjectionConfig
 ASGIMessage = dict[str, Any]
 
 
-async def _receive() -> ASGIMessage:  # noqa: RUF029 - ASGI receive callbacks are async by contract
+async def _receive() -> ASGIMessage:  # ruff: ignore[unused-async] - ASGI receive callbacks are async by contract
     return {"type": "http.request", "body": b"", "more_body": False}
 
 
@@ -21,32 +21,28 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
     received_scope: dict[str, Any] = {}
     sent: list[ASGIMessage] = []
 
-    async def capture(message: ASGIMessage) -> None:  # noqa: RUF029 - ASGI send callbacks are async by contract
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send callbacks are async by contract
         sent.append(message)
 
     async def app(scope, _receive, send) -> None:
         received_scope.update(scope)
-        await send(
-            {
-                "type": "http.response.start",
-                "status": HTTPStatus.OK,
-                "headers": [
-                    (b"content-type", b"text/html; charset=utf-8"),
-                    (b"content-length", b"31"),
-                    (b"etag", b'"abc"'),
-                    (b"content-security-policy", b"default-src 'self'"),
-                ],
-            }
-        )
-        await send(
-            {
-                "type": "http.response.body",
-                "body": b"<html><body>Hello</body></html>",
-                "more_body": False,
-            }
-        )
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [
+                (b"content-type", b"text/html; charset=utf-8"),
+                (b"content-length", b"31"),
+                (b"etag", b'"abc"'),
+                (b"content-security-policy", b"default-src 'self'"),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"<html><body>Hello</body></html>",
+            "more_body": False,
+        })
 
-    fixture_token = "-".join(("fixture", "token"))
+    fixture_token = "fixture-token"  # ruff: ignore[hardcoded-password-string]
     middleware = HTMLInjectionMiddleware(
         app,
         InjectionConfig(
@@ -90,31 +86,25 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
 async def test_streaming_html_passes_through_without_injection() -> None:
     sent: list[ASGIMessage] = []
 
-    async def capture(message: ASGIMessage) -> None:  # noqa: RUF029 - ASGI send callbacks are async by contract
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send callbacks are async by contract
         sent.append(message)
 
     async def app(_scope, _receive, send) -> None:
-        await send(
-            {
-                "type": "http.response.start",
-                "status": HTTPStatus.OK,
-                "headers": [(b"content-type", b"text/html")],
-            }
-        )
-        await send(
-            {
-                "type": "http.response.body",
-                "body": b"<html><body>",
-                "more_body": True,
-            }
-        )
-        await send(
-            {
-                "type": "http.response.body",
-                "body": b"</body></html>",
-                "more_body": False,
-            }
-        )
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [(b"content-type", b"text/html")],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"<html><body>",
+            "more_body": True,
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"</body></html>",
+            "more_body": False,
+        })
 
     middleware = HTMLInjectionMiddleware(
         app,
@@ -133,27 +123,23 @@ async def test_streaming_html_passes_through_without_injection() -> None:
 async def test_explicitly_compressed_html_passes_through() -> None:
     sent: list[ASGIMessage] = []
 
-    async def capture(message: ASGIMessage) -> None:  # noqa: RUF029 - ASGI send callbacks are async by contract
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send callbacks are async by contract
         sent.append(message)
 
     async def app(_scope, _receive, send) -> None:
-        await send(
-            {
-                "type": "http.response.start",
-                "status": HTTPStatus.OK,
-                "headers": [
-                    (b"content-type", b"text/html"),
-                    (b"content-encoding", b"gzip"),
-                ],
-            }
-        )
-        await send(
-            {
-                "type": "http.response.body",
-                "body": b"compressed",
-                "more_body": False,
-            }
-        )
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [
+                (b"content-type", b"text/html"),
+                (b"content-encoding", b"gzip"),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"compressed",
+            "more_body": False,
+        })
 
     middleware = HTMLInjectionMiddleware(
         app,

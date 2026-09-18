@@ -12,13 +12,11 @@ from kyth.watcher import FileWatcher, WatcherConfig, normalize_changes
 @pytest.mark.unit
 @pytest.mark.small
 def test_normalize_changes_is_deterministic() -> None:
-    batch = normalize_changes(
-        {
-            (Change.modified, "/project/z.py"),
-            (Change.deleted, "/project/a.py"),
-            (Change.added, "/project/a.py"),
-        }
-    )
+    batch = normalize_changes({
+        (Change.modified, "/project/z.py"),
+        (Change.deleted, "/project/a.py"),
+        (Change.added, "/project/a.py"),
+    })
 
     assert batch.events == (
         FileEvent(Path("/project/a.py"), FileOperation.ADDED),

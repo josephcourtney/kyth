@@ -9,14 +9,12 @@ from kyth.model import FileBatch, FileEvent, FileOperation
 @pytest.mark.unit
 @pytest.mark.small
 def test_classification_separates_restart_browser_and_other_paths() -> None:
-    batch = FileBatch.from_events(
-        [
-            FileEvent(Path("/project/src/app.py"), FileOperation.MODIFIED),
-            FileEvent(Path("/project/.env.development"), FileOperation.MODIFIED),
-            FileEvent(Path("/project/templates/index.html"), FileOperation.MODIFIED),
-            FileEvent(Path("/project/README.md"), FileOperation.MODIFIED),
-        ]
-    )
+    batch = FileBatch.from_events([
+        FileEvent(Path("/project/src/app.py"), FileOperation.MODIFIED),
+        FileEvent(Path("/project/.env.development"), FileOperation.MODIFIED),
+        FileEvent(Path("/project/templates/index.html"), FileOperation.MODIFIED),
+        FileEvent(Path("/project/README.md"), FileOperation.MODIFIED),
+    ])
 
     changes = classify_batch(batch)
 

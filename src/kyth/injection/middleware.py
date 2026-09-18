@@ -176,11 +176,7 @@ def _without_accept_encoding(scope: ASGIScope) -> ASGIScope:
     if not isinstance(raw_headers, list):
         return scope
 
-    headers = [
-        (name, value)
-        for name, value in raw_headers
-        if bytes(name).lower() != b"accept-encoding"
-    ]
+    headers = [(name, value) for name, value in raw_headers if bytes(name).lower() != b"accept-encoding"]
     if len(headers) == len(raw_headers):
         return scope
     return {**scope, "headers": headers}
