@@ -106,16 +106,12 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            view_id = _required_string(payload, "view_id")
-            url = _required_string(payload, "url")
-            generation = _required_nonnegative_int(payload, "generation")
-            render_id = _optional_string(payload, "render_id")
-            resources = _resources(payload)
-            resources_complete = _optional_bool(payload, "resources_complete")
-        except ValueError as exc:
+            registration = _view_registration(payload)
+        except (TypeError, ValueError) as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)}, origin=origin)
             return
 
+        view_id, url, generation, render_id, resources, resources_complete = registration
         view = self._state.views.register(
             view_id=view_id,
             url=url,
@@ -419,13 +415,26 @@ def _optional_string(payload: dict[str, object], key: str) -> str | None:
     return value
 
 
+def _view_registration(
+    payload: dict[str, object],
+) -> tuple[str, str, int, str | None, tuple[BrowserResource, ...], bool | None]:
+    return (
+        _required_string(payload, "view_id"),
+        _required_string(payload, "url"),
+        _required_nonnegative_int(payload, "generation"),
+        _optional_string(payload, "render_id"),
+        _resources(payload),
+        _optional_bool(payload, "resources_complete"),
+    )
+
+
 def _optional_bool(payload: dict[str, object], key: str) -> bool | None:
     value = payload.get(key)
     if value is None:
         return None
     if not isinstance(value, bool):
         msg = f"{key} must be a boolean or null"
-        raise ValueError(msg)
+        raise TypeError(msg)
     return value
 
 
@@ -435,7 +444,7 @@ def _resources(payload: dict[str, object]) -> tuple[BrowserResource, ...]:
         return ()
     if not isinstance(value, list):
         msg = "resources must be a JSON array"
-        raise ValueError(msg)
+        raise TypeError(msg)
     if len(value) > MAX_REGISTERED_RESOURCES:
         msg = "resources contains too many entries"
         raise ValueError(msg)
@@ -444,15 +453,18 @@ def _resources(payload: dict[str, object]) -> tuple[BrowserResource, ...]:
     for item in value:
         if not isinstance(item, dict):
             msg = "each resource must be a JSON object"
-            raise ValueError(msg)
+            raise TypeError(msg)
         url = item.get("url")
         kind = item.get("kind")
-        if not isinstance(url, str) or not url:
+        if not isinstance(url, str):
+            msg = "resource url must be a string"
+            raise TypeError(msg)
+        if not url:
             msg = "resource url must be a non-empty string"
             raise ValueError(msg)
         if not isinstance(kind, str):
             msg = "resource kind must be a string"
-            raise ValueError(msg)
+            raise TypeError(msg)
         try:
             resource_kind = BrowserResourceKind(kind)
         except ValueError as exc:

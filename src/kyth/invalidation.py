@@ -136,11 +136,12 @@ def decide_browser_updates(
 
     ordered_actions = tuple(sorted(actions.values(), key=lambda action: action.view_id))
     current = tuple(sorted(active - set(actions)))
-    reason = (
-        "narrow-browser-update"
-        if any(action.kind is not BrowserActionKind.RELOAD for action in ordered_actions)
-        else "known-browser-dependency"
-    )
+    if any(action.kind is not BrowserActionKind.RELOAD for action in ordered_actions):
+        reason = "narrow-browser-update"
+    elif html_paths and not resource_paths:
+        reason = "known-direct-output"
+    else:
+        reason = "known-browser-dependency"
     return BrowserUpdateDecision(paths, ordered_actions, current, reason)
 
 
