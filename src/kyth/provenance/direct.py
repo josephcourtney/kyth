@@ -29,10 +29,7 @@ class DirectOutputIndex:
         grouped: dict[Path, list[str]] = {}
         for view_id, output in self._view_outputs.items():
             grouped.setdefault(output, []).append(view_id)
-        return {
-            output: tuple(sorted(view_ids))
-            for output, view_ids in grouped.items()
-        }
+        return {output: tuple(sorted(view_ids)) for output, view_ids in grouped.items()}
 
     def reconcile(self, view_urls: Mapping[str, str]) -> None:
         """Refresh active direct mappings while retaining previously observed outputs."""
@@ -49,7 +46,8 @@ class DirectOutputIndex:
             self._view_outputs[view_id] = output
             self._known_outputs.add(output)
 
-    def normalize_changed_path(self, path: Path) -> Path:
+    @staticmethod
+    def normalize_changed_path(path: Path) -> Path:
         """Normalize a watcher path into the same identity used by the index."""
         return _normalize_path(path)
 
@@ -61,8 +59,7 @@ class DirectOutputIndex:
         candidates = tuple(
             candidate
             for root in self._roots
-            if (candidate := _candidate(root, relative)) is not None
-            and candidate.is_file()
+            if (candidate := _candidate(root, relative)) is not None and candidate.is_file()
         )
         if len(candidates) != 1:
             return None

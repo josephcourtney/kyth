@@ -185,11 +185,7 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
         current_view = self._state.views.get(view_id)
         self._state.views.ensure(view_id)
         subscriber = self._state.broker.subscribe(view_id)
-        reload_required = (
-            None
-            if current_view is None
-            else current_view.generation < current_generation
-        )
+        reload_required = None if current_view is None else current_view.generation < current_generation
         try:
             self._open_event_stream(origin)
             self._write_event(

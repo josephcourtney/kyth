@@ -134,14 +134,12 @@ def _register_view(
         connection.request(
             "POST",
             f"/views?token={token}",
-            body=json.dumps(
-                {
-                    "view_id": view_id,
-                    "url": url,
-                    "generation": generation,
-                    "render_id": None,
-                }
-            ),
+            body=json.dumps({
+                "view_id": view_id,
+                "url": url,
+                "generation": generation,
+                "render_id": None,
+            }),
             headers={
                 "Content-Type": "application/json",
                 "Origin": urlsplit_origin(url),
@@ -383,7 +381,6 @@ def test_restart_publishes_reload_only_after_new_generation_is_ready(tmp_path: P
             events.close()
     finally:
         sys.path.remove(str(tmp_path))
-
 
 
 @pytest.mark.system

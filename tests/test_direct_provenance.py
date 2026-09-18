@@ -24,13 +24,11 @@ def test_direct_output_index_tracks_active_and_previously_observed_outputs(tmp_p
     about.write_text("<h1>About</h1>", encoding="utf-8")
 
     provenance = DirectOutputIndex((tmp_path,))
-    provenance.reconcile(
-        {
-            "home": "http://127.0.0.1:8000/",
-            "about": "http://127.0.0.1:8000/about.html",
-            "dynamic": "http://127.0.0.1:8000/about",
-        }
-    )
+    provenance.reconcile({
+        "home": "http://127.0.0.1:8000/",
+        "about": "http://127.0.0.1:8000/about.html",
+        "dynamic": "http://127.0.0.1:8000/about",
+    })
 
     assert provenance.output_views == {
         index.resolve(): ("home",),

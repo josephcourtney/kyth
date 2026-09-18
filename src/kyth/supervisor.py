@@ -284,10 +284,7 @@ class Supervisor:
         self._refresh_direct_outputs()
         control = self._require_control()
         views = control.views.snapshot()
-        normalized = tuple(
-            self._direct_outputs.normalize_changed_path(path)
-            for path in changed_paths
-        )
+        normalized = tuple(self._direct_outputs.normalize_changed_path(path) for path in changed_paths)
         return decide_browser_invalidation(
             normalized,
             known_outputs=self._direct_outputs.known_outputs,
@@ -319,11 +316,7 @@ class Supervisor:
     def _refresh_direct_outputs(self) -> None:
         if self._control is None:
             return
-        view_urls = {
-            view.view_id: view.url
-            for view in self._control.views.snapshot()
-            if view.url
-        }
+        view_urls = {view.view_id: view.url for view in self._control.views.snapshot() if view.url}
         self._direct_outputs.reconcile(view_urls)
 
     def _create_watcher(self) -> FileWatcher:

@@ -39,7 +39,6 @@ def test_ensure_and_touch_keep_a_view_alive() -> None:
     assert registry.expire_inactive() == ()
 
 
-
 @pytest.mark.unit
 @pytest.mark.small
 def test_set_generation_marks_only_selected_views_current() -> None:
