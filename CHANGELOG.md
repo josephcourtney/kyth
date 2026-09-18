@@ -21,6 +21,7 @@ Items should be categorized under these headings:
 
 - add the Phase 1 development supervisor with a persistent public socket, restartable ASGI child, explicit readiness reporting, bounded shutdown, failure recovery, generation state, and initial CLI
 - add Phase 2 filesystem observation with `watchfiles`, configurable watch/ignore paths, deterministic change batches, default restart classification, restart coalescing, and concise change-decision logging
+- add the Phase 3 supervisor-owned loopback control plane with token/origin restrictions, generation-aware SSE, browser-view registration, reconnect synchronization, inactive-view cleanup, and lifecycle-independent control state
 
 ### Changed
 

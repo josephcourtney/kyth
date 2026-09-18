@@ -37,6 +37,12 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         help="additional path to ignore; may be repeated",
     )
+    parser.add_argument(
+        "--control-port",
+        type=int,
+        default=0,
+        help="loopback browser-control port (default: choose an available port)",
+    )
     return parser
 
 
@@ -52,6 +58,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
         shutdown_timeout=args.shutdown_timeout,
         watch_roots=watch_roots,
         ignored_paths=tuple(args.ignored_paths),
+        control_port=args.control_port,
     )
 
     with Supervisor(config) as supervisor, contextlib.suppress(KeyboardInterrupt):

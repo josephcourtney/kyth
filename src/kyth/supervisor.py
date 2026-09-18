@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
 from kyth.changes import ChangeSet, classify_batch
+from kyth.control import ControlService
 from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch
 from kyth.process.manager import ChildProcess
 from kyth.process.socket import DEFAULT_BACKLOG, bind_listening_socket
@@ -33,10 +34,12 @@ class SupervisorConfig:
     ignored_paths: tuple[Path, ...] = ()
     watch_debounce_ms: int = 300
     watch_step_ms: int = 50
+    control_port: int = 0
+    view_inactivity_timeout: float = 300.0
 
 
 class Supervisor:
-    """Long-lived owner of the public socket and restartable application child."""
+    """Long-lived owner of the public socket, control plane, and application child."""
 
     def __init__(self, config: SupervisorConfig, *, process_context: SpawnContext | None = None) -> None:
         """Initialize supervisor state without binding resources yet."""
@@ -45,6 +48,7 @@ class Supervisor:
         self._process_context = process_context
         self._socket: socket.socket | None = None
         self._child: ChildProcess | None = None
+        self._control: ControlService | None = None
 
     @property
     def address(self) -> tuple[str, int]:
@@ -56,11 +60,37 @@ class Supervisor:
     def socket_fileno(self) -> int:
         return self._require_socket().fileno()
 
+    @property
+    def control_address(self) -> tuple[str, int]:
+        return self._require_control().address
+
+    @property
+    def control_token(self) -> str:
+        return self._require_control().token
+
     def open(self) -> None:
         if self._socket is not None:
             return
-        self._socket = bind_listening_socket(self.config.host, self.config.port, backlog=self.config.backlog)
-        logger.info("listening on %s:%d", *self.address)
+
+        app_socket = bind_listening_socket(self.config.host, self.config.port, backlog=self.config.backlog)
+        control: ControlService | None = None
+        try:
+            control = ControlService(
+                port=self.config.control_port,
+                generation=self.state.generation,
+                inactivity_timeout=self.config.view_inactivity_timeout,
+            )
+            control.start()
+        except Exception:  # noqa: BLE001 - both sockets must be released for any startup failure
+            if control is not None:
+                control.close()
+            app_socket.close()
+            raise
+
+        self._socket = app_socket
+        self._control = control
+        logger.info("application listening on %s:%d", *self.address)
+        logger.info("control plane listening on %s:%d", *self.control_address)
 
     def start_child(self) -> bool:
         listening_socket = self._require_socket()
@@ -77,6 +107,8 @@ class Supervisor:
         if result.ready:
             generation = self.state.generation + 1
             self.state = DevelopmentState(generation, ChildState(ChildStatus.READY, pid=child.pid))
+            if self._control is not None:
+                self._control.set_generation(generation)
             logger.info("child %s ready; generation %d", child.pid, generation)
             return True
 
@@ -142,14 +174,34 @@ class Supervisor:
             source.close()
 
     def close(self) -> None:
-        if self._child is not None:
-            self.stop_child()
-        if self._socket is not None:
-            self._socket.close()
-            self._socket = None
+        child_error: Exception | None = None
+        control_error: Exception | None = None
+        try:
+            if self._child is not None:
+                self.stop_child()
+        except Exception as exc:  # noqa: BLE001 - cleanup must continue before re-raising child failure
+            child_error = exc
+
+        try:
+            if self._control is not None:
+                self._control.close()
+        except Exception as exc:  # noqa: BLE001 - application socket must still be released
+            control_error = exc
+        finally:
+            self._control = None
+            if self._socket is not None:
+                self._socket.close()
+                self._socket = None
+
+        if child_error is not None:
+            if control_error is not None:
+                child_error.add_note(f"control cleanup also failed: {control_error}")
+            raise child_error
+        if control_error is not None:
+            raise control_error
 
     def __enter__(self) -> Self:
-        """Open the supervisor-owned listening socket."""
+        """Open supervisor-owned application and control-plane sockets."""
         self.open()
         return self
 
@@ -159,7 +211,7 @@ class Supervisor:
         _exc_value: BaseException | None,
         _traceback: TracebackType | None,
     ) -> None:
-        """Release the child and listening socket when leaving the context."""
+        """Release the child and supervisor-owned sockets."""
         self.close()
 
     def _handle_change_cycle(self, initial_batch: FileBatch, source: BatchSource) -> None:
@@ -192,11 +244,11 @@ class Supervisor:
         if changes.requires_restart:
             logger.info("%s changed -> restart", rendered)
             if changes.browser_paths:
-                logger.info("browser-facing changes in this batch are deferred until the browser control phase")
+                logger.info("browser-facing changes in this batch are deferred until the browser reload phase")
             return
 
         if changes.browser_paths:
-            logger.info("%s changed -> browser-facing change; no Phase 2 browser action", rendered)
+            logger.info("%s changed -> browser-facing change; no Phase 3 browser action", rendered)
             return
 
         logger.info("%s changed -> no restart", rendered)
@@ -220,6 +272,12 @@ class Supervisor:
             msg = "supervisor socket is not open"
             raise RuntimeError(msg)
         return self._socket
+
+    def _require_control(self) -> ControlService:
+        if self._control is None:
+            msg = "control service is not open"
+            raise RuntimeError(msg)
+        return self._control
 
 
 def _display_path(path: Path) -> str:

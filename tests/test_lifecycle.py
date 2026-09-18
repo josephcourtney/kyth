@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import http.client
+import json
 import socket
 import sys
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -62,6 +63,20 @@ def _request(address: tuple[str, int]) -> str:
         connection.request("GET", "/")
         response = connection.getresponse()
         return response.read().decode()
+    finally:
+        connection.close()
+
+
+
+def _control_health(address: tuple[str, int], token: str) -> dict[str, object]:
+    connection = http.client.HTTPConnection(*address, timeout=2.0)
+    try:
+        connection.request("GET", f"/health?token={token}")
+        response = connection.getresponse()
+        assert response.status == 200
+        payload = json.loads(response.read())
+        assert isinstance(payload, dict)
+        return cast(dict[str, object], payload)
     finally:
         connection.close()
 
@@ -181,5 +196,31 @@ def test_shutdown_is_bounded_when_lifespan_hangs(tmp_path: Path) -> None:
 
             assert elapsed < 2.0
             assert supervisor.state.child.status is ChildStatus.ABSENT
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_control_plane_survives_application_child_restart(tmp_path: Path) -> None:
+    module = tmp_path / "control_app.py"
+    _write_app(module, body="one")
+    sys.path.insert(0, str(tmp_path))
+    try:
+        config = SupervisorConfig("control_app:app", port=0, startup_timeout=5.0, shutdown_timeout=1.0)
+        with Supervisor(config) as supervisor:
+            control_address = supervisor.control_address
+            control_token = supervisor.control_token
+
+            assert supervisor.start_child()
+            assert _control_health(control_address, control_token)["generation"] == 1
+
+            _write_app(module, body="two")
+            assert supervisor.restart_child()
+
+            assert supervisor.control_address == control_address
+            assert supervisor.control_token == control_token
+            assert _control_health(control_address, control_token)["generation"] == 2
     finally:
         sys.path.remove(str(tmp_path))

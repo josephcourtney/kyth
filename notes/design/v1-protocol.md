@@ -168,6 +168,17 @@ The default control transport is SSE from supervisor to browser plus ordinary HT
 
 The SSE stream supports automatic browser reconnection and is intentionally not tied to the application child.
 
+Phase 3 defines the control HTTP surface as:
+
+- `GET /events?token=<session-token>&view_id=<view-id>` opens the SSE stream and immediately emits a `sync` event for the current generation;
+- `POST /views?token=<session-token>` registers or updates one browser view using a JSON object containing `view_id`, `url`, `generation`, and optional `render_id`;
+- `OPTIONS /views?token=<session-token>` supports the cross-origin registration preflight;
+- `GET /health?token=<session-token>` exposes minimal development diagnostics for the current generation and active-view count.
+
+The control service binds to loopback only. Each development session has an unguessable token. Browser requests with an `Origin` header are accepted only for loopback HTTP(S) origins and the accepted origin is reflected explicitly in CORS responses; wildcard CORS is not used. Requests without an `Origin` header remain available to local development tooling when the token is valid.
+
+On SSE reconnection Kyth does not need to replay Phase 3 events. It emits a fresh `sync` event containing the current generation, which is sufficient for the later browser client to determine whether conservative synchronization is required.
+
 The protocol should use structured event names rather than one undifferentiated reload message.
 
 V1 event kinds are:
