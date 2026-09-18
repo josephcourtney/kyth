@@ -268,6 +268,8 @@ class Supervisor:
             self.restart_child()
             return
 
+        if decision.current_view_ids:
+            self._control.mark_views_current(decision.current_view_ids, generation)
         self.state = replace(self.state, generation=generation)
         self._control.set_generation(generation)
         self._publish_browser_decision(decision, generation)
@@ -300,7 +302,6 @@ class Supervisor:
     ) -> None:
         control = self._require_control()
         if decision.current_view_ids:
-            control.mark_views_current(decision.current_view_ids, generation)
             control.publish(
                 ControlEvent.sync(generation, reload_required=False),
                 view_ids=decision.current_view_ids,
