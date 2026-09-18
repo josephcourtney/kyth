@@ -122,19 +122,27 @@ Deliver:
 
 Do not make Kyth responsible for arbitrary build execution in this phase.
 
-## Phase 9: optional application hooks
+## Post-v0.2.0 hardening
 
-Add extension points only after the generic behavior is stable.
+After the Phase 1-8 implementation is validated as v0.2.0, prioritize reliability and maintainability before expanding functionality.
 
-Candidates:
+Sequence hardening work as follows:
 
-- typed data-change handlers;
-- explicit custom dependency registration;
-- custom readiness checks;
-- limited state-preservation hooks;
-- coordination hooks for an external frontend dev server.
+1. characterize the codebase with existing dead-code, complexity, duplication, coverage, and test-category tooling;
+2. simplify code where findings identify real maintenance cost, preserving established architecture and invariants;
+3. move policy/provenance behavior toward fast hermetic tests while keeping true filesystem, localhost-network, and subprocess behavior in integration/system tests;
+4. strengthen failure, race, reconnect, cleanup, watcher-coalescing, and malformed-input coverage;
+5. use mutation and property-based testing on pure state/policy layers to identify weak assertions and invariant gaps;
+6. add a minimal real-browser acceptance layer for the injected client and narrow-update/fallback behavior;
+7. rehearse lifecycle/socket behavior across the supported platform and Python-version matrix.
 
-Each extension must preserve a correct zero-touch fallback.
+Do not optimize test-category percentages by relabeling genuinely I/O-bound tests. Improve the boundary between pure policy and I/O mechanisms instead.
+
+## Phase 9: optional application hooks — deferred
+
+Do not implement a general hook framework without a concrete use case that cannot be represented by direct provenance, render records, browser-resource observation, or generated dependency manifests.
+
+If such a use case appears, add the smallest typed extension necessary and preserve the zero-touch fallback. Candidate capabilities remain explicit custom dependency registration, custom readiness, semantic browser data updates, state preservation, or coordination with an external frontend HMR owner.
 
 ## Cross-cutting implementation constraints
 

@@ -17,6 +17,10 @@ Items should be categorized under these headings:
 
 ## Unreleased
 
+No unreleased user-visible changes yet.
+
+## [0.2.0] - 2026-09-18
+
 ### Added
 
 - add the Phase 1 development supervisor with a persistent public socket, restartable ASGI child, explicit readiness reporting, bounded shutdown, failure recovery, generation state, and initial CLI
