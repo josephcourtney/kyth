@@ -5,6 +5,7 @@ import json
 import socket
 import sys
 import time
+from http import HTTPStatus
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -34,6 +35,7 @@ def _write_app(
     )
     path.write_text(
         f"""import asyncio
+from http import HTTPStatus
 from pathlib import Path
 
 
@@ -46,7 +48,7 @@ async def app(scope, receive, send):
             elif message["type"] == "lifespan.shutdown":
                 {shutdown_code}
     elif scope["type"] == "http":
-        await send({{"type": "http.response.start", "status": 200, "headers": []}})
+        await send({{"type": "http.response.start", "status": HTTPStatus.OK, "headers": []}})
         await send({{"type": "http.response.body", "body": {body.encode()!r}}})
 """,
         encoding="utf-8",
@@ -55,7 +57,10 @@ async def app(scope, receive, send):
 
 def _write_html_app(path: Path, *, body: str) -> None:
     path.write_text(
-        f"""async def app(scope, receive, send):
+        f"""from http import HTTPStatus
+
+
+async def app(scope, receive, send):
     if scope["type"] == "lifespan":
         while True:
             message = await receive()
@@ -67,7 +72,7 @@ def _write_html_app(path: Path, *, body: str) -> None:
     elif scope["type"] == "http":
         await send({{
             "type": "http.response.start",
-            "status": 200,
+            "status": HTTPStatus.OK,
             "headers": [(b"content-type", b"text/html; charset=utf-8")],
         }})
         await send({{
@@ -122,7 +127,7 @@ def _control_health(address: tuple[str, int], token: str) -> dict[str, object]:
     try:
         connection.request("GET", f"/health?token={token}")
         response = connection.getresponse()
-        assert response.status == 200
+        assert response.status == HTTPStatus.OK
         payload = json.loads(response.read())
         assert isinstance(payload, dict)
         return cast(dict[str, object], payload)
@@ -290,7 +295,7 @@ def test_html_response_injects_control_client_and_tracks_browser_generation(tmp_
             status, headers, body = _request_response(supervisor.address, "/")
             text = body.decode()
 
-            assert status == 200
+            assert status == HTTPStatus.OK
             assert headers["content-type"] == "text/html; charset=utf-8"
             assert "/client.js?token=" in text
             assert f'data-kyth-generation="{supervisor.state.generation}"' in text

@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from http import HTTPStatus
 from threading import Lock
 from typing import Any
 
@@ -125,8 +126,12 @@ class _ResponseInjector:
     def _injectable(self) -> bool:
         if self._method == "HEAD" or self._start is None:
             return False
-        status = int(self._start.get("status", 200))
-        if status < 200 or status in {204, 205, 304}:
+        status = int(self._start.get("status", HTTPStatus.OK))
+        if status < HTTPStatus.OK or status in {
+            HTTPStatus.NO_CONTENT,
+            HTTPStatus.RESET_CONTENT,
+            HTTPStatus.NOT_MODIFIED,
+        }:
             return False
         headers = _headers(self._start)
         if _header_value(headers, b"content-range") is not None:

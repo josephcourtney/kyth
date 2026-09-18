@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+from http import HTTPStatus
 from urllib.parse import quote
 
 import pytest
@@ -61,7 +62,7 @@ def test_registration_and_sse_generation_sync() -> None:
             headers={"Content-Type": "application/json", "Origin": LOOPBACK_ORIGIN},
         )
         response = registration.getresponse()
-        assert response.status == 200
+        assert response.status == HTTPStatus.OK
         assert response.getheader("Access-Control-Allow-Origin") == LOOPBACK_ORIGIN
         response.read()
         registration.close()
@@ -69,7 +70,7 @@ def test_registration_and_sse_generation_sync() -> None:
         events = http.client.HTTPConnection(*service.address, timeout=2.0)
         events.request("GET", _event_path(service, "view-a"), headers={"Origin": LOOPBACK_ORIGIN})
         stream = events.getresponse()
-        assert stream.status == 200
+        assert stream.status == HTTPStatus.OK
         assert stream.getheader("Content-Type") == "text/event-stream"
         assert _read_sse_event(stream) == {
             "id": "4",
@@ -110,7 +111,7 @@ def test_control_service_rejects_bad_token_and_non_loopback_origin() -> None:
         connection = http.client.HTTPConnection(*service.address, timeout=2.0)
         connection.request("GET", f"/health?token={quote(service.token)}x")
         response = connection.getresponse()
-        assert response.status == 403
+        assert response.status == HTTPStatus.FORBIDDEN
         response.read()
 
         connection.request(
@@ -119,7 +120,7 @@ def test_control_service_rejects_bad_token_and_non_loopback_origin() -> None:
             headers={"Origin": "https://example.com"},
         )
         response = connection.getresponse()
-        assert response.status == 403
+        assert response.status == HTTPStatus.FORBIDDEN
         response.read()
         connection.close()
 
@@ -140,7 +141,7 @@ def test_preflight_reflects_only_allowed_loopback_origin() -> None:
         )
         response = connection.getresponse()
 
-        assert response.status == 204
+        assert response.status == HTTPStatus.NO_CONTENT
         assert response.getheader("Access-Control-Allow-Origin") == LOOPBACK_ORIGIN
         assert response.getheader("Access-Control-Allow-Methods") == "POST, OPTIONS"
         response.read()
@@ -157,7 +158,7 @@ def test_control_service_serves_token_gated_browser_client() -> None:
         response = connection.getresponse()
         body = response.read().decode()
 
-        assert response.status == 200
+        assert response.status == HTTPStatus.OK
         assert response.getheader("Content-Type") == "text/javascript; charset=utf-8"
         assert response.getheader("Cache-Control") == "no-store"
         assert "new EventSource" in body

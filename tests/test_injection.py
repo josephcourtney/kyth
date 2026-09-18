@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from http import HTTPStatus
 from typing import Any
 
 import pytest
@@ -28,7 +29,7 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
         await send(
             {
                 "type": "http.response.start",
-                "status": 200,
+                "status": HTTPStatus.OK,
                 "headers": [
                     (b"content-type", b"text/html; charset=utf-8"),
                     (b"content-length", b"31"),
@@ -95,7 +96,7 @@ async def test_streaming_html_passes_through_without_injection() -> None:
         await send(
             {
                 "type": "http.response.start",
-                "status": 200,
+                "status": HTTPStatus.OK,
                 "headers": [(b"content-type", b"text/html")],
             }
         )
@@ -138,7 +139,7 @@ async def test_explicitly_compressed_html_passes_through() -> None:
         await send(
             {
                 "type": "http.response.start",
-                "status": 200,
+                "status": HTTPStatus.OK,
                 "headers": [
                     (b"content-type", b"text/html"),
                     (b"content-encoding", b"gzip"),
