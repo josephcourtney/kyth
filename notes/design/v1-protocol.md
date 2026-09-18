@@ -173,6 +173,7 @@ Phase 3 defines the control HTTP surface as:
 - `GET /events?token=<session-token>&view_id=<view-id>` opens the SSE stream and immediately emits a `sync` event for the current generation;
 - `POST /views?token=<session-token>` registers or updates one browser view using a JSON object containing `view_id`, `url`, `generation`, and optional `render_id`;
 - `OPTIONS /views?token=<session-token>` supports the cross-origin registration preflight;
+- `GET /client.js?token=<session-token>` serves the external browser client with no-store caching;
 - `GET /health?token=<session-token>` exposes minimal development diagnostics for the current generation and active-view count.
 
 The control service binds to loopback only. Each development session has an unguessable token. Browser requests with an `Origin` header are accepted only for loopback HTTP(S) origins and the accepted origin is reflected explicitly in CORS responses; wildcard CORS is not used. Requests without an `Origin` header remain available to local development tooling when the token is valid.
@@ -230,13 +231,29 @@ When an external frontend development server owns HMR, Kyth should avoid issuing
 
 ## 16. HTML injection
 
-The child-side ASGI wrapper injects the external Kyth browser client only into supported HTML responses.
+The child-side ASGI wrapper injects the external Kyth browser client only into supported HTML responses. The application does not import Kyth and templates do not need development-only markup.
 
-Injection occurs at the response boundary rather than through application templates. The wrapper is responsible for keeping headers consistent with the modified body, including content length and validators where applicable.
+For ordinary HTTP requests the wrapper removes `Accept-Encoding` before invoking the application so common compression middleware produces an injectable representation. If the application nevertheless emits a non-identity `Content-Encoding`, Kyth passes the response through unchanged rather than decompressing arbitrary bytes.
 
-The wrapper should ensure it sees an injectable representation rather than attempting ad hoc mutation of compressed bytes.
+V1 injection applies only to a complete, non-streaming `text/html` response. HEAD responses, informational/no-content/not-modified responses, byte-range responses, explicitly compressed responses, and responses that begin streaming with `more_body=True` are passed through unchanged.
 
-Streaming responses that cannot be safely rewritten are passed through and receive reduced zero-touch functionality. Explicit client inclusion may be offered later for such cases.
+For an injected response Kyth:
+
+- inserts one external `<script>` before `</body>`, before `</html>`, or at the end as a final fallback;
+- embeds the control URL, session token, committed/candidate generation, and an opaque render identifier as script data attributes;
+- recalculates `Content-Length`;
+- removes content-derived cache validators such as ETag/digest and Last-Modified;
+- augments an existing CSP narrowly enough to permit the nonce-bearing Kyth script and the exact loopback control origin for script/connect traffic.
+
+The browser client creates a tab-scoped opaque `view_id`, registers `view_id`, current URL, generation, and render ID with `POST /views`, then opens `GET /events`.
+
+A live `sync` event does not itself reload an already connected page because a more specific event for that generation may immediately follow. On initial connection or SSE reconnection, however, `sync` is compared with the page generation and triggers conservative reload if the page is stale.
+
+A `reload` event reloads only when its generation is newer than the document generation. Before navigation, the client stores the target generation in tab-scoped session storage so duplicate delivery or reconnection cannot create a reload loop.
+
+When browser-facing files change without a Python restart, the supervisor first updates the live child generation over process IPC and waits for acknowledgement. Only then does it commit the new generation and publish reload. If that update cannot be confirmed, Kyth falls back to replacing the child before notifying browsers.
+
+Streaming or otherwise non-injectable pages retain normal application behavior but do not receive zero-touch browser synchronization in V1. Explicit client inclusion may be offered later for such cases.
 
 ## 17. Static and generated HTML
 

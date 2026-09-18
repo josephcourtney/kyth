@@ -1,12 +1,11 @@
 # TODO
 
-- implement Phase 4 transparent browser-client injection at the ASGI HTML-response boundary;
-- serve the external development client from the supervisor-owned control service;
-- inject the control URL, session token, current render/document identity, and generation without application changes;
-- register one tab-scoped view and open its SSE connection from the injected client;
-- implement generation-aware full-page reload handling with duplicate-event protection;
-- update content length/cache validators correctly for modified HTML responses and document the streaming-response fallback;
-- ensure compressed HTML is either made injectable before transformation or passed through conservatively;
-- connect successful Python restart to a readiness-gated `reload` event rather than only a `sync` event;
-- add system coverage for `change -> restart -> readiness -> reload` while preserving the control connection;
-- run `just check` and resolve any platform/toolchain issues exposed by Phase 3.
+- implement Phase 5 direct static/generated HTML awareness;
+- associate active views with directly served document/output identities where this can be inferred without framework-specific integration;
+- separate source/output invalidation from browser action in executable code rather than only the design model;
+- avoid reloading a view for a known unrelated HTML output change;
+- retain conservative full reload for ambiguous relationships;
+- keep inactive outputs logically stale without forcing eager browser work;
+- add tests with multiple active views proving that only views displaying an affected direct output reload;
+- preserve the Phase 4 full-reload fallback whenever direct mapping is unavailable;
+- run `just check` and resolve any platform/toolchain issues exposed by Phase 4.

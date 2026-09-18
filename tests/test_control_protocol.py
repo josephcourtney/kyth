@@ -145,3 +145,22 @@ def test_preflight_reflects_only_allowed_loopback_origin() -> None:
         assert response.getheader("Access-Control-Allow-Methods") == "POST, OPTIONS"
         response.read()
         connection.close()
+
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_control_service_serves_token_gated_browser_client() -> None:
+    with ControlService() as service:
+        connection = http.client.HTTPConnection(*service.address, timeout=2.0)
+        connection.request("GET", f"/client.js?token={quote(service.token)}")
+        response = connection.getresponse()
+        body = response.read().decode()
+
+        assert response.status == 200
+        assert response.getheader("Content-Type") == "text/javascript; charset=utf-8"
+        assert response.getheader("Cache-Control") == "no-store"
+        assert "new EventSource" in body
+        assert 'fetch(url, {' in body
+        assert 'addEventListener("reload"' in body
+        connection.close()

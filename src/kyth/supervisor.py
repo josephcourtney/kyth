@@ -11,6 +11,7 @@ from kyth.control import ControlService
 from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch
 from kyth.process.manager import ChildProcess
 from kyth.process.socket import DEFAULT_BACKLOG, bind_listening_socket
+from kyth.protocol import ControlEvent
 from kyth.watcher import BatchSource, FileWatcher, WatcherConfig
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ class SupervisorConfig:
     watch_step_ms: int = 50
     control_port: int = 0
     view_inactivity_timeout: float = 300.0
+    generation_update_timeout: float = 2.0
 
 
 class Supervisor:
@@ -93,41 +95,11 @@ class Supervisor:
         logger.info("control plane listening on %s:%d", *self.control_address)
 
     def start_child(self) -> bool:
-        listening_socket = self._require_socket()
-        if self._child is not None:
-            msg = "cannot start a child while another child is owned"
-            raise RuntimeError(msg)
-
-        child = ChildProcess(context=self._process_context)
-        child.start(self.config.app_target, listening_socket)
-        self._child = child
-        self.state = replace(self.state, child=ChildState(ChildStatus.STARTING, pid=child.pid))
-
-        result = child.wait_for_startup(self.config.startup_timeout)
-        if result.ready:
-            generation = self.state.generation + 1
-            self.state = DevelopmentState(generation, ChildState(ChildStatus.READY, pid=child.pid))
-            if self._control is not None:
-                self._control.set_generation(generation)
-            logger.info("child %s ready; generation %d", child.pid, generation)
-            return True
-
-        error = result.error or "application startup failed"
-        exit_code = self._stop_owned_child_if_needed()
-        self.state = replace(
-            self.state,
-            child=ChildState(
-                ChildStatus.FAILED,
-                error=error,
-                exit_code=result.exit_code if result.exit_code is not None else exit_code,
-            ),
-        )
-        logger.error("application startup failed: %s", error)
-        return False
+        return self._start_child(reload_browsers=False)
 
     def restart_child(self) -> bool:
         self.stop_child()
-        return self.start_child()
+        return self._start_child(reload_browsers=True)
 
     def stop_child(self) -> None:
         if self._child is None:
@@ -214,19 +186,90 @@ class Supervisor:
         """Release the child and supervisor-owned sockets."""
         self.close()
 
+    def _start_child(self, *, reload_browsers: bool) -> bool:
+        listening_socket = self._require_socket()
+        if self._child is not None:
+            msg = "cannot start a child while another child is owned"
+            raise RuntimeError(msg)
+
+        control = self._require_control()
+        generation = self.state.generation + 1
+        control_host, control_port = control.address
+        child = ChildProcess(context=self._process_context)
+        child.start(
+            self.config.app_target,
+            listening_socket,
+            control_url=f"http://{control_host}:{control_port}",
+            control_token=control.token,
+            generation=generation,
+        )
+        self._child = child
+        self.state = replace(self.state, child=ChildState(ChildStatus.STARTING, pid=child.pid))
+
+        result = child.wait_for_startup(self.config.startup_timeout)
+        if result.ready:
+            self.state = DevelopmentState(generation, ChildState(ChildStatus.READY, pid=child.pid))
+            control.set_generation(generation)
+            if reload_browsers:
+                control.publish(ControlEvent.reload(generation, reason="server-restart"))
+            logger.info("child %s ready; generation %d", child.pid, generation)
+            return True
+
+        error = result.error or "application startup failed"
+        exit_code = self._stop_owned_child_if_needed()
+        self.state = replace(
+            self.state,
+            child=ChildState(
+                ChildStatus.FAILED,
+                error=error,
+                exit_code=result.exit_code if result.exit_code is not None else exit_code,
+            ),
+        )
+        logger.error("application startup failed: %s", error)
+        return False
+
     def _handle_change_cycle(self, initial_batch: FileBatch, source: BatchSource) -> None:
         batch = initial_batch
         while True:
             changes = classify_batch(batch)
             self._log_change_set(changes)
-            if not changes.requires_restart:
+
+            if changes.requires_restart:
+                self.restart_child()
+            elif changes.browser_paths:
+                self._reload_for_browser_change()
+            else:
                 return
 
-            self.restart_child()
             pending = source.drain_pending()
             if pending is None:
                 return
             batch = pending
+
+    def _reload_for_browser_change(self) -> None:
+        if (
+            self._child is None
+            or self.state.child.status is not ChildStatus.READY
+            or self._control is None
+        ):
+            logger.info("browser-facing change deferred because no application child is ready")
+            return
+
+        generation = self.state.generation + 1
+        try:
+            self._child.set_generation(
+                generation,
+                timeout=self.config.generation_update_timeout,
+            )
+        except RuntimeError:
+            logger.warning("child generation update failed; restarting application before browser reload")
+            self.restart_child()
+            return
+
+        self.state = replace(self.state, generation=generation)
+        self._control.set_generation(generation)
+        self._control.publish(ControlEvent.reload(generation, reason="browser-change"))
+        logger.info("browser-facing state ready; generation %d", generation)
 
     def _create_watcher(self) -> FileWatcher:
         roots = self.config.watch_roots or (Path.cwd(),)
@@ -243,16 +286,14 @@ class Supervisor:
     def _log_change_set(changes: ChangeSet) -> None:
         rendered = ", ".join(_display_path(path) for path in changes.batch.paths)
         if changes.requires_restart:
-            logger.info("%s changed -> restart", rendered)
-            if changes.browser_paths:
-                logger.info("browser-facing changes in this batch are deferred until the browser reload phase")
+            logger.info("%s changed -> restart then browser reload", rendered)
             return
 
         if changes.browser_paths:
-            logger.info("%s changed -> browser-facing change; no Phase 3 browser action", rendered)
+            logger.info("%s changed -> browser reload", rendered)
             return
 
-        logger.info("%s changed -> no restart", rendered)
+        logger.info("%s changed -> no action", rendered)
 
     def _stop_owned_child_if_needed(self) -> int | None:
         if self._child is None:

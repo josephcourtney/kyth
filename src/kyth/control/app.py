@@ -12,6 +12,7 @@ from threading import Lock, Thread
 from typing import Self, cast
 from urllib.parse import parse_qs, urlsplit
 
+from kyth.control.client import CLIENT_JAVASCRIPT
 from kyth.control.sse import EventBroker, SubscriberQueue, encode_sse
 from kyth.control.views import BrowserView, ViewRegistry
 from kyth.protocol import ControlEvent
@@ -126,6 +127,9 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
         if path == "/events":
             self._serve_events(origin)
             return
+        if path == "/client.js":
+            self._send_javascript(CLIENT_JAVASCRIPT, origin=origin)
+            return
         if path == "/health":
             self._send_json(
                 HTTPStatus.OK,
@@ -233,6 +237,17 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "request body must be a JSON object"}, origin=origin)
             return None
         return cast(dict[str, object], value)
+
+    def _send_javascript(self, source: str, *, origin: str | None) -> None:
+        body = source.encode()
+        self.send_response(HTTPStatus.OK)
+        self._send_cors_headers(origin)
+        self.send_header("Content-Type", "text/javascript; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cross-Origin-Resource-Policy", "cross-origin")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _send_json(
         self,

@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from kyth.process.child import run_child
-from kyth.process.readiness import ChildCommand, StartupEvent, StartupEventKind
+from kyth.process.readiness import (
+    ChildCommand,
+    GenerationApplied,
+    GenerationUpdate,
+    StartupEvent,
+    StartupEventKind,
+)
 from kyth.process.socket import duplicate_listening_socket
 
 if TYPE_CHECKING:
@@ -45,7 +51,15 @@ class ChildProcess:
     def is_alive(self) -> bool:
         return self._process is not None and self._process.is_alive()
 
-    def start(self, app_target: str, listening_socket: socket.socket) -> None:
+    def start(
+        self,
+        app_target: str,
+        listening_socket: socket.socket,
+        *,
+        control_url: str,
+        control_token: str,
+        generation: int,
+    ) -> None:
         if self._process is not None:
             msg = "child process has already been started"
             raise RuntimeError(msg)
@@ -61,6 +75,9 @@ class ChildProcess:
                 socket_family,
                 socket_type,
                 socket_proto,
+                control_url,
+                control_token,
+                generation,
                 readiness_send,
                 control_recv,
             ),
@@ -117,6 +134,29 @@ class ChildProcess:
                     error="child exited before reporting readiness",
                     exit_code=process.exitcode,
                 )
+
+    def set_generation(self, generation: int, *, timeout: float) -> None:
+        """Update future HTML responses and wait until the child confirms the update."""
+        process = self._require_process()
+        readiness = self._require_readiness()
+        self._require_control().send(GenerationUpdate(generation))
+
+        if not readiness.poll(timeout):
+            if not process.is_alive():
+                msg = "application child exited before applying generation update"
+            else:
+                msg = "application child timed out while applying generation update"
+            raise RuntimeError(msg)
+
+        try:
+            event = readiness.recv()
+        except EOFError as exc:
+            msg = "application child exited before confirming generation update"
+            raise RuntimeError(msg) from exc
+
+        if not isinstance(event, GenerationApplied) or event.generation != generation:
+            msg = "application child sent an invalid generation acknowledgement"
+            raise RuntimeError(msg)
 
     def stop(self, *, grace_timeout: float, terminate_timeout: float) -> int | None:
         process = self._require_process()

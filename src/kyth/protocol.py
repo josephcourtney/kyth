@@ -22,3 +22,7 @@ class ControlEvent:
     @classmethod
     def sync(cls, generation: int) -> ControlEvent:
         return cls(ControlEventKind.SYNC, generation)
+
+    @classmethod
+    def reload(cls, generation: int, *, reason: str) -> ControlEvent:
+        return cls(ControlEventKind.RELOAD, generation, {"reason": reason})

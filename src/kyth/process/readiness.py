@@ -14,6 +14,16 @@ class ChildCommand(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class GenerationUpdate:
+    generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationApplied:
+    generation: int
+
+
+@dataclass(frozen=True, slots=True)
 class StartupEvent:
     kind: StartupEventKind
     detail: str | None = None

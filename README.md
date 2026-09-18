@@ -1,8 +1,8 @@
 # Kyth
 
-Kyth is a local development supervisor for Python web applications and generated websites. It restarts server code safely, keeps the public listening socket stable across restarts, and will update only browser views affected by changed content when dependency information is available.
+Kyth is a local development supervisor for Python web applications and generated websites. It restarts server code safely, keeps the public listening socket stable across restarts, and synchronizes browser views with coherent development generations.
 
-The ground-up V1 implementation is in progress. Phases 1 through 3 now provide the supervisor-owned application socket, restartable ASGI child lifecycle, filesystem watching and restart classification, and a persistent loopback browser control plane with generation-aware SSE and browser-view registration. Transparent browser-client injection begins in Phase 4.
+The ground-up V1 vertical slice through Phase 4 is now implemented. Kyth provides the supervisor-owned application socket, restartable ASGI child lifecycle, filesystem watching and restart classification, a persistent loopback browser control plane, transparent HTML client injection, per-tab registration, and generation-aware full-page reload.
 
 Basic usage:
 
@@ -11,6 +11,8 @@ kyth package.module:app
 ```
 
 Use repeated `--watch PATH` options to override the default current-directory watch root, repeated `--ignore PATH` options to add ignored paths, and `--control-port PORT` when a fixed loopback control port is required. By default Kyth chooses an available control port.
+
+For supported ordinary HTML responses, no application or template changes are required. Streaming, byte-range, and explicitly compressed HTML responses are passed through without injection.
 
 See:
 

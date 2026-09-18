@@ -53,6 +53,32 @@ async def app(scope, receive, send):
     )
 
 
+def _write_html_app(path: Path, *, body: str) -> None:
+    path.write_text(
+        f"""async def app(scope, receive, send):
+    if scope["type"] == "lifespan":
+        while True:
+            message = await receive()
+            if message["type"] == "lifespan.startup":
+                await send({{"type": "lifespan.startup.complete"}})
+            elif message["type"] == "lifespan.shutdown":
+                await send({{"type": "lifespan.shutdown.complete"}})
+                return
+    elif scope["type"] == "http":
+        await send({{
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [(b"content-type", b"text/html; charset=utf-8")],
+        }})
+        await send({{
+            "type": "http.response.body",
+            "body": {body.encode()!r},
+        }})
+""",
+        encoding="utf-8",
+    )
+
+
 def _write_broken_app(path: Path) -> None:
     path.write_text("this is not valid Python !!!\n", encoding="utf-8")
 
@@ -66,6 +92,29 @@ def _request(address: tuple[str, int]) -> str:
     finally:
         connection.close()
 
+
+
+def _request_response(address: tuple[str, int], path: str) -> tuple[int, dict[str, str], bytes]:
+    connection = http.client.HTTPConnection(*address, timeout=2.0)
+    try:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        headers = {name.lower(): value for name, value in response.getheaders()}
+        return response.status, headers, response.read()
+    finally:
+        connection.close()
+
+
+def _read_sse_event(response: http.client.HTTPResponse) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    while True:
+        line = response.readline().decode().rstrip("\r\n")
+        if not line:
+            return fields
+        if line.startswith(":"):
+            continue
+        key, value = line.split(":", 1)
+        fields[key] = value.lstrip()
 
 
 def _control_health(address: tuple[str, int], token: str) -> dict[str, object]:
@@ -222,5 +271,78 @@ def test_control_plane_survives_application_child_restart(tmp_path: Path) -> Non
             assert supervisor.control_address == control_address
             assert supervisor.control_token == control_token
             assert _control_health(control_address, control_token)["generation"] == 2
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_html_response_injects_control_client_and_tracks_browser_generation(tmp_path: Path) -> None:
+    module = tmp_path / "html_app.py"
+    _write_html_app(module, body="<html><body>Hello</body></html>")
+    sys.path.insert(0, str(tmp_path))
+    try:
+        config = SupervisorConfig("html_app:app", port=0, startup_timeout=5.0, shutdown_timeout=1.0)
+        with Supervisor(config) as supervisor:
+            assert supervisor.start_child()
+            original_pid = supervisor.state.child.pid
+            status, headers, body = _request_response(supervisor.address, "/")
+            text = body.decode()
+
+            assert status == 200
+            assert headers["content-type"] == "text/html; charset=utf-8"
+            assert "/client.js?token=" in text
+            assert f'data-kyth-generation="{supervisor.state.generation}"' in text
+            assert f'data-kyth-control="http://{supervisor.control_address[0]}:{supervisor.control_address[1]}"' in text
+            assert "data-kyth-render-id=" in text
+
+            supervisor._reload_for_browser_change()
+
+            assert supervisor.state.child.pid == original_pid
+            assert supervisor.state.generation == 2
+            _, _, updated_body = _request_response(supervisor.address, "/")
+            assert b'data-kyth-generation="2"' in updated_body
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_restart_publishes_reload_only_after_new_generation_is_ready(tmp_path: Path) -> None:
+    module = tmp_path / "reload_app.py"
+    _write_html_app(module, body="<html><body>one</body></html>")
+    sys.path.insert(0, str(tmp_path))
+    try:
+        config = SupervisorConfig("reload_app:app", port=0, startup_timeout=5.0, shutdown_timeout=1.0)
+        with Supervisor(config) as supervisor:
+            assert supervisor.start_child()
+
+            events = http.client.HTTPConnection(*supervisor.control_address, timeout=2.0)
+            events.request(
+                "GET",
+                f"/events?token={supervisor.control_token}&view_id=test-view",
+                headers={"Origin": f"http://{supervisor.address[0]}:{supervisor.address[1]}"},
+            )
+            stream = events.getresponse()
+            assert _read_sse_event(stream)["event"] == "sync"
+
+            _write_html_app(module, body="<html><body>two</body></html>")
+            assert supervisor.restart_child()
+
+            sync_event = _read_sse_event(stream)
+            reload_event = _read_sse_event(stream)
+
+            assert sync_event["event"] == "sync"
+            assert sync_event["id"] == "2"
+            assert reload_event["event"] == "reload"
+            assert reload_event["id"] == "2"
+            assert '"reason":"server-restart"' in reload_event["data"]
+
+            _, _, body = _request_response(supervisor.address, "/")
+            assert b"<body>two" in body
+            assert b'data-kyth-generation="2"' in body
+            stream.close()
+            events.close()
     finally:
         sys.path.remove(str(tmp_path))
