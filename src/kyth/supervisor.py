@@ -239,7 +239,8 @@ class Supervisor:
             )
         )
 
-    def _log_change_set(self, changes: ChangeSet) -> None:
+    @staticmethod
+    def _log_change_set(changes: ChangeSet) -> None:
         rendered = ", ".join(_display_path(path) for path in changes.batch.paths)
         if changes.requires_restart:
             logger.info("%s changed -> restart", rendered)

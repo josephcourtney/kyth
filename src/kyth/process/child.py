@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
+import sys
+import tempfile
 import threading
 from typing import TYPE_CHECKING
 
@@ -64,13 +67,15 @@ def run_child(
         socket_type,
         socket_proto,
     )
-    config = uvicorn.Config(app_target, reload=False, workers=1)
-    server = _ReadinessServer(config, readiness)
-    control_thread = threading.Thread(target=_watch_control, args=(server, control), daemon=True)
-    control_thread.start()
-
     try:
-        asyncio.run(server.serve(sockets=[listening_socket]))
+        with tempfile.TemporaryDirectory(prefix="kyth-pycache-") as pycache_dir:
+            sys.pycache_prefix = pycache_dir
+            importlib.invalidate_caches()
+            config = uvicorn.Config(app_target, reload=False, workers=1)
+            server = _ReadinessServer(config, readiness)
+            control_thread = threading.Thread(target=_watch_control, args=(server, control), daemon=True)
+            control_thread.start()
+            asyncio.run(server.serve(sockets=[listening_socket]))
     finally:
         readiness.close()
         control.close()

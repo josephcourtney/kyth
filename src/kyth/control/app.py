@@ -138,8 +138,14 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_status(HTTPStatus.NOT_FOUND, origin=origin)
 
-    def log_message(self, _format: str, *_args: object) -> None:
-        logger.debug("%s %s", self.command, self._request_path())
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - stdlib override name
+        logger.debug(
+            "control request: command=%s path=%s message=%s args=%r",
+            self.command,
+            self._request_path(),
+            format,
+            args,
+        )
 
     @property
     def _control_server(self) -> _ControlHTTPServer:
@@ -172,20 +178,26 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
         self._state.views.ensure(view_id)
         subscriber = self._state.broker.subscribe()
         try:
-            self.send_response(HTTPStatus.OK)
-            self._send_cors_headers(origin)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.send_header("X-Accel-Buffering", "no")
-            self.end_headers()
-            self.wfile.write(encode_sse(ControlEvent.sync(self._state.generation)))
-            self.wfile.flush()
+            self._open_event_stream(origin)
+            self._write_event(ControlEvent.sync(self._state.generation))
             self._event_loop(view_id, subscriber)
         except OSError:
             return
         finally:
             self._state.broker.unsubscribe(subscriber)
+
+    def _open_event_stream(self, origin: str | None) -> None:
+        self.send_response(HTTPStatus.OK)
+        self._send_cors_headers(origin)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+    def _write_event(self, event: ControlEvent) -> None:
+        self.wfile.write(encode_sse(event))
+        self.wfile.flush()
 
     def _event_loop(self, view_id: str, subscriber: SubscriberQueue) -> None:
         while True:
@@ -199,8 +211,7 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             if event is None:
                 return
             self._state.views.touch(view_id)
-            self.wfile.write(encode_sse(event))
-            self.wfile.flush()
+            self._write_event(event)
 
     def _read_json_object(self, origin: str | None) -> dict[str, object] | None:
         raw_length = self.headers.get("Content-Length")

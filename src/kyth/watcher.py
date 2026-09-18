@@ -120,10 +120,12 @@ class FileWatcher:
         return self._filter(change, path)
 
     def __enter__(self) -> Self:
+        """Start watching when entering the context."""
         self.start()
         return self
 
     def __exit__(self, *_args: object) -> None:
+        """Stop watching when leaving the context."""
         self.close()
 
     def _run(self) -> None:

@@ -33,6 +33,8 @@ Items should be categorized under these headings:
 
 ### Fixed
 
+- isolate each spawned application child in a fresh bytecode-cache directory so rapid same-size Python edits cannot restart into stale timestamp/size-validated bytecode
+- fix Phase 3 control-plane lint and typing issues around HTTP handler overrides, SSE stream setup, static logging policy, and watcher context-manager documentation
 - fix spawned-child socket transfer so socket subclasses do not need to be pickled and narrow multiprocessing context typing to the spawn context actually used
 
 ### Security
