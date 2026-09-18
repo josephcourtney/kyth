@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Collection, Mapping
 
 HTML_SUFFIXES = frozenset({".htm", ".html"})
 

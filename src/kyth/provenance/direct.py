@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
+from typing import TYPE_CHECKING
 from urllib.parse import unquote, urlsplit
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from pathlib import Path
 
 HTML_SUFFIXES = frozenset({".htm", ".html"})
 
@@ -57,7 +61,8 @@ class DirectOutputIndex:
         candidates = tuple(
             candidate
             for root in self._roots
-            if (candidate := _candidate(root, relative)).is_file()
+            if (candidate := _candidate(root, relative)) is not None
+            and candidate.is_file()
         )
         if len(candidates) != 1:
             return None
@@ -83,8 +88,11 @@ def direct_document_relative_path(url: str) -> PurePosixPath | None:
     return None
 
 
-def _candidate(root: Path, relative: PurePosixPath) -> Path:
-    return _normalize_path(root.joinpath(*relative.parts))
+def _candidate(root: Path, relative: PurePosixPath) -> Path | None:
+    candidate = _normalize_path(root.joinpath(*relative.parts))
+    if not candidate.is_relative_to(root):
+        return None
+    return candidate
 
 
 def _normalize_path(path: Path) -> Path:

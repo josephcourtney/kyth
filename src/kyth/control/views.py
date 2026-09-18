@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Collection
 from dataclasses import dataclass, replace
 from threading import Lock
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Collection
 
 
 @dataclass(frozen=True, slots=True)

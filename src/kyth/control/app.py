@@ -5,18 +5,20 @@ import ipaddress
 import json
 import logging
 import secrets
-from collections.abc import Collection
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from queue import Empty
 from threading import Lock, Thread
-from typing import Self, cast
+from typing import TYPE_CHECKING, Self, cast
 from urllib.parse import parse_qs, urlsplit
 
 from kyth.control.client import CLIENT_JAVASCRIPT
 from kyth.control.sse import EventBroker, SubscriberQueue, encode_sse
 from kyth.control.views import BrowserView, ViewRegistry
 from kyth.protocol import ControlEvent
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
 
 logger = logging.getLogger(__name__)
 
