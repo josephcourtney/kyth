@@ -37,3 +37,21 @@ def test_ensure_and_touch_keep_a_view_alive() -> None:
     now[0] = 5.0
 
     assert registry.expire_inactive() == ()
+
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_set_generation_marks_only_selected_views_current() -> None:
+    registry = ViewRegistry(inactivity_timeout=5.0, clock=lambda: 10.0)
+    registry.register(view_id="first", url="http://127.0.0.1/first.html", generation=1)
+    registry.register(view_id="second", url="http://127.0.0.1/second.html", generation=1)
+
+    registry.set_generation(("first",), 2)
+
+    first = registry.get("first")
+    second = registry.get("second")
+    assert first is not None
+    assert second is not None
+    assert first.generation == 2
+    assert second.generation == 1

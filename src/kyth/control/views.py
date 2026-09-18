@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 from threading import Lock
 from typing import TYPE_CHECKING
@@ -67,6 +68,16 @@ class ViewRegistry:
             updated = replace(current, last_seen=now)
             self._views[view_id] = updated
             return updated
+
+    def set_generation(self, view_ids: Collection[str], generation: int) -> None:
+        """Mark selected views as valid through a committed generation."""
+        selected = set(view_ids)
+        with self._lock:
+            for view_id in selected:
+                current = self._views.get(view_id)
+                if current is None or generation < current.generation:
+                    continue
+                self._views[view_id] = replace(current, generation=generation)
 
     def get(self, view_id: str) -> BrowserView | None:
         with self._lock:

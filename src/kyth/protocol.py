@@ -20,8 +20,16 @@ class ControlEvent:
     data: dict[str, object] = field(default_factory=dict)
 
     @classmethod
-    def sync(cls, generation: int) -> ControlEvent:
-        return cls(ControlEventKind.SYNC, generation)
+    def sync(
+        cls,
+        generation: int,
+        *,
+        reload_required: bool | None = None,
+    ) -> ControlEvent:
+        data: dict[str, object] = {}
+        if reload_required is not None:
+            data["reload_required"] = reload_required
+        return cls(ControlEventKind.SYNC, generation, data)
 
     @classmethod
     def reload(cls, generation: int, *, reason: str) -> ControlEvent:

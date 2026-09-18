@@ -73,15 +73,20 @@ def test_registration_and_sse_generation_sync() -> None:
         assert _read_sse_event(stream) == {
             "id": "4",
             "event": "sync",
-            "data": '{"data":{},"generation":4}',
+            "data": '{"data":{"reload_required":true},"generation":4}',
         }
 
         service.set_generation(5)
+        service.mark_views_current(("view-a",), 5)
+        service.publish(
+            ControlEvent.sync(5, reload_required=False),
+            view_ids=("view-a",),
+        )
 
         assert _read_sse_event(stream) == {
             "id": "5",
             "event": "sync",
-            "data": '{"data":{},"generation":5}',
+            "data": '{"data":{"reload_required":false},"generation":5}',
         }
         stream.close()
         events.close()
@@ -92,7 +97,7 @@ def test_registration_and_sse_generation_sync() -> None:
         assert _read_sse_event(reconnected_stream) == {
             "id": "5",
             "event": "sync",
-            "data": '{"data":{},"generation":5}',
+            "data": '{"data":{"reload_required":false},"generation":5}',
         }
         reconnected_stream.close()
         reconnect.close()

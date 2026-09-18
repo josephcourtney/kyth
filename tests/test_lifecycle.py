@@ -121,6 +121,44 @@ def _read_sse_event(response: http.client.HTTPResponse) -> dict[str, str]:
         fields[key] = value.lstrip()
 
 
+def _register_view(
+    address: tuple[str, int],
+    token: str,
+    *,
+    view_id: str,
+    url: str,
+    generation: int,
+) -> None:
+    connection = http.client.HTTPConnection(*address, timeout=2.0)
+    try:
+        connection.request(
+            "POST",
+            f"/views?token={token}",
+            body=json.dumps(
+                {
+                    "view_id": view_id,
+                    "url": url,
+                    "generation": generation,
+                    "render_id": None,
+                }
+            ),
+            headers={
+                "Content-Type": "application/json",
+                "Origin": urlsplit_origin(url),
+            },
+        )
+        response = connection.getresponse()
+        assert response.status == HTTPStatus.OK
+        response.read()
+    finally:
+        connection.close()
+
+
+def urlsplit_origin(url: str) -> str:
+    parts = url.split("/", 3)
+    return "/".join(parts[:3])
+
+
 def _control_health(address: tuple[str, int], token: str) -> dict[str, object]:
     connection = http.client.HTTPConnection(*address, timeout=2.0)
     try:
@@ -299,7 +337,7 @@ def test_html_response_injects_control_client_and_tracks_browser_generation(tmp_
             assert f'data-kyth-control="http://{supervisor.control_address[0]}:{supervisor.control_address[1]}"' in text
             assert "data-kyth-render-id=" in text
 
-            supervisor._reload_for_browser_change()
+            supervisor._reload_for_browser_change((tmp_path / "site.css",))
 
             assert supervisor.state.child.pid == original_pid
             assert supervisor.state.generation == 2
@@ -332,11 +370,8 @@ def test_restart_publishes_reload_only_after_new_generation_is_ready(tmp_path: P
             _write_html_app(module, body="<html><body>two</body></html>")
             assert supervisor.restart_child()
 
-            sync_event = _read_sse_event(stream)
             reload_event = _read_sse_event(stream)
 
-            assert sync_event["event"] == "sync"
-            assert sync_event["id"] == "2"
             assert reload_event["event"] == "reload"
             assert reload_event["id"] == "2"
             assert '"reason":"server-restart"' in reload_event["data"]
@@ -346,5 +381,82 @@ def test_restart_publishes_reload_only_after_new_generation_is_ready(tmp_path: P
             assert b'data-kyth-generation="2"' in body
             stream.close()
             events.close()
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_known_direct_html_change_reloads_only_affected_view(tmp_path: Path) -> None:
+    module = tmp_path / "direct_app.py"
+    index = tmp_path / "index.html"
+    about = tmp_path / "about.html"
+    index.write_text("<html><body>home</body></html>", encoding="utf-8")
+    about.write_text("<html><body>about</body></html>", encoding="utf-8")
+    _write_html_app(module, body="<html><body>served</body></html>")
+    sys.path.insert(0, str(tmp_path))
+    try:
+        config = SupervisorConfig(
+            "direct_app:app",
+            port=0,
+            startup_timeout=5.0,
+            shutdown_timeout=1.0,
+            watch_roots=(tmp_path,),
+        )
+        with Supervisor(config) as supervisor:
+            assert supervisor.start_child()
+            app_origin = f"http://{supervisor.address[0]}:{supervisor.address[1]}"
+            generation = supervisor.state.generation
+            _register_view(
+                supervisor.control_address,
+                supervisor.control_token,
+                view_id="home",
+                url=f"{app_origin}/",
+                generation=generation,
+            )
+            _register_view(
+                supervisor.control_address,
+                supervisor.control_token,
+                view_id="about",
+                url=f"{app_origin}/about.html",
+                generation=generation,
+            )
+
+            home_events = http.client.HTTPConnection(*supervisor.control_address, timeout=2.0)
+            home_events.request(
+                "GET",
+                f"/events?token={supervisor.control_token}&view_id=home",
+                headers={"Origin": app_origin},
+            )
+            home_stream = home_events.getresponse()
+            assert '"reload_required":false' in _read_sse_event(home_stream)["data"]
+
+            about_events = http.client.HTTPConnection(*supervisor.control_address, timeout=2.0)
+            about_events.request(
+                "GET",
+                f"/events?token={supervisor.control_token}&view_id=about",
+                headers={"Origin": app_origin},
+            )
+            about_stream = about_events.getresponse()
+            assert '"reload_required":false' in _read_sse_event(about_stream)["data"]
+
+            about.write_text("<html><body>changed</body></html>", encoding="utf-8")
+            supervisor._reload_for_browser_change((about,))
+
+            home_event = _read_sse_event(home_stream)
+            about_event = _read_sse_event(about_stream)
+
+            assert home_event["event"] == "sync"
+            assert home_event["id"] == "2"
+            assert '"reload_required":false' in home_event["data"]
+            assert about_event["event"] == "reload"
+            assert about_event["id"] == "2"
+            assert '"reason":"known-direct-output"' in about_event["data"]
+
+            home_stream.close()
+            home_events.close()
+            about_stream.close()
+            about_events.close()
     finally:
         sys.path.remove(str(tmp_path))

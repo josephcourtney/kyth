@@ -69,13 +69,16 @@ CLIENT_JAVASCRIPT = (
   let reloading = false;
   let awaitingSync = true;
 
-  function generationFromEvent(event) {
+  function payloadFromEvent(event) {
     try {
-      const payload = JSON.parse(event.data);
-      return Number(payload.generation);
+      return JSON.parse(event.data);
     } catch {
-      return Number.NaN;
+      return null;
     }
+  }
+
+  function generationFromPayload(payload) {
+    return payload === null ? Number.NaN : Number(payload.generation);
   }
 
   function reloadForGeneration(generation) {
@@ -91,45 +94,63 @@ CLIENT_JAVASCRIPT = (
     location.reload();
   }
 
-  function registerView() {
+  async function registerView() {
     const url = new URL("/views", control);
     url.searchParams.set("token", token);
-    fetch(url, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        view_id: viewId,
-        url: location.href,
-        generation: pageGeneration,
-        render_id: renderId,
-      }),
-    }).catch(() => {});
-  }
-
-  registerView();
-  addEventListener("pageshow", registerView);
-
-  const eventsUrl = new URL("/events", control);
-  eventsUrl.searchParams.set("token", token);
-  eventsUrl.searchParams.set("view_id", viewId);
-
-  const events = new EventSource(eventsUrl);
-
-  events.addEventListener("open", () => {
-    awaitingSync = true;
-  });
-
-  events.addEventListener("sync", (event) => {
-    const generation = generationFromEvent(event);
-    if (!awaitingSync) {
+    try {
+      await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          view_id: viewId,
+          url: location.href,
+          generation: pageGeneration,
+          render_id: renderId,
+        }),
+      });
+    } catch {
       return;
     }
-    awaitingSync = false;
-    reloadForGeneration(generation);
-  });
+  }
 
-  events.addEventListener("reload", (event) => {
-    reloadForGeneration(generationFromEvent(event));
+  function connectEvents() {
+    const eventsUrl = new URL("/events", control);
+    eventsUrl.searchParams.set("token", token);
+    eventsUrl.searchParams.set("view_id", viewId);
+
+    const events = new EventSource(eventsUrl);
+
+    events.addEventListener("open", () => {
+      awaitingSync = true;
+    });
+
+    events.addEventListener("sync", (event) => {
+      const payload = payloadFromEvent(event);
+      const generation = generationFromPayload(payload);
+      const reloadRequired = payload?.data?.reload_required;
+
+      if (reloadRequired === false) {
+        if (Number.isFinite(generation) && generation > pageGeneration) {
+          pageGeneration = generation;
+        }
+        awaitingSync = false;
+        return;
+      }
+
+      if (reloadRequired === true || awaitingSync) {
+        awaitingSync = false;
+        reloadForGeneration(generation);
+      }
+    });
+
+    events.addEventListener("reload", (event) => {
+      reloadForGeneration(generationFromPayload(payloadFromEvent(event)));
+    });
+  }
+
+  registerView().finally(connectEvents);
+  addEventListener("pageshow", () => {
+    void registerView();
   });
 })();
 """.strip()

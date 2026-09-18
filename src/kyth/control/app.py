@@ -5,6 +5,7 @@ import ipaddress
 import json
 import logging
 import secrets
+from collections.abc import Collection
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from queue import Empty
@@ -50,7 +51,6 @@ class _ControlState:
             if generation == self._generation:
                 return
             self._generation = generation
-        self.broker.publish(ControlEvent.sync(generation))
 
 
 class _ControlHTTPServer(ThreadingHTTPServer):
@@ -179,11 +179,23 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "view_id is required"}, origin=origin)
             return
 
+        current_generation = self._state.generation
+        current_view = self._state.views.get(view_id)
         self._state.views.ensure(view_id)
-        subscriber = self._state.broker.subscribe()
+        subscriber = self._state.broker.subscribe(view_id)
+        reload_required = (
+            None
+            if current_view is None
+            else current_view.generation < current_generation
+        )
         try:
             self._open_event_stream(origin)
-            self._write_event(ControlEvent.sync(self._state.generation))
+            self._write_event(
+                ControlEvent.sync(
+                    current_generation,
+                    reload_required=reload_required,
+                )
+            )
             self._event_loop(view_id, subscriber)
         except OSError:
             return
@@ -334,9 +346,18 @@ class ControlService:
     def set_generation(self, generation: int) -> None:
         self._state.set_generation(generation)
 
-    def publish(self, event: ControlEvent) -> None:
-        """Publish one structured event to all connected browser views."""
-        self._state.broker.publish(event)
+    def publish(
+        self,
+        event: ControlEvent,
+        *,
+        view_ids: Collection[str] | None = None,
+    ) -> None:
+        """Publish one structured event to all or selected connected browser views."""
+        self._state.broker.publish(event, view_ids=view_ids)
+
+    def mark_views_current(self, view_ids: Collection[str], generation: int) -> None:
+        """Mark selected views valid through a generation without reloading them."""
+        self._state.views.set_generation(view_ids, generation)
 
     def close(self) -> None:
         self._state.broker.close()

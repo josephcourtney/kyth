@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Collection
 from queue import Queue
 from threading import Lock
 
@@ -10,32 +11,34 @@ SubscriberQueue = Queue[ControlEvent | None]
 
 
 class EventBroker:
-    """Fan out control events to all connected SSE subscribers."""
+    """Fan out control events to all or selected connected browser views."""
 
     def __init__(self) -> None:
         """Create an empty event fan-out broker."""
         self._lock = Lock()
-        self._subscribers: set[SubscriberQueue] = set()
+        self._subscribers: dict[SubscriberQueue, str] = {}
         self._closed = False
 
-    def subscribe(self) -> SubscriberQueue:
+    def subscribe(self, view_id: str) -> SubscriberQueue:
         subscriber: SubscriberQueue = Queue()
         with self._lock:
             if self._closed:
                 subscriber.put(None)
             else:
-                self._subscribers.add(subscriber)
+                self._subscribers[subscriber] = view_id
         return subscriber
 
     def unsubscribe(self, subscriber: SubscriberQueue) -> None:
         with self._lock:
-            self._subscribers.discard(subscriber)
+            self._subscribers.pop(subscriber, None)
 
-    def publish(self, event: ControlEvent) -> None:
+    def publish(self, event: ControlEvent, *, view_ids: Collection[str] | None = None) -> None:
+        targets = None if view_ids is None else set(view_ids)
         with self._lock:
-            subscribers = tuple(self._subscribers)
-        for subscriber in subscribers:
-            subscriber.put(event)
+            subscribers = tuple(self._subscribers.items())
+        for subscriber, view_id in subscribers:
+            if targets is None or view_id in targets:
+                subscriber.put(event)
 
     def close(self) -> None:
         with self._lock:

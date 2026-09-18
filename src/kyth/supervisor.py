@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING, Self
 
 from kyth.changes import ChangeSet, classify_batch
 from kyth.control import ControlService
+from kyth.invalidation import InvalidationDecision, ReloadScope, decide_browser_invalidation
 from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch
 from kyth.process.manager import ChildProcess
 from kyth.process.socket import DEFAULT_BACKLOG, bind_listening_socket
 from kyth.protocol import ControlEvent
+from kyth.provenance import DirectOutputIndex
 from kyth.watcher import BatchSource, FileWatcher, WatcherConfig
 
 if TYPE_CHECKING:
@@ -50,6 +52,8 @@ class Supervisor:
         self._socket: socket.socket | None = None
         self._child: ChildProcess | None = None
         self._control: ControlService | None = None
+        roots = config.watch_roots or (Path.cwd(),)
+        self._direct_outputs = DirectOutputIndex(roots)
 
     @property
     def address(self) -> tuple[str, int]:
@@ -116,6 +120,7 @@ class Supervisor:
         self.state = replace(self.state, child=ChildState(ChildStatus.ABSENT, exit_code=exit_code))
 
     def poll(self) -> None:
+        self._refresh_direct_outputs()
         if self._child is None or self.state.child.status is not ChildStatus.READY or self._child.is_alive:
             return
         exit_code = self._child.exit_code
@@ -230,13 +235,14 @@ class Supervisor:
     def _handle_change_cycle(self, initial_batch: FileBatch, source: BatchSource) -> None:
         batch = initial_batch
         while True:
+            self._refresh_direct_outputs()
             changes = classify_batch(batch)
             self._log_change_set(changes)
 
             if changes.requires_restart:
                 self.restart_child()
             elif changes.browser_paths:
-                self._reload_for_browser_change()
+                self._reload_for_browser_change(changes.browser_paths)
             else:
                 return
 
@@ -245,11 +251,12 @@ class Supervisor:
                 return
             batch = pending
 
-    def _reload_for_browser_change(self) -> None:
+    def _reload_for_browser_change(self, changed_paths: tuple[Path, ...]) -> None:
         if self._child is None or self.state.child.status is not ChildStatus.READY or self._control is None:
             logger.info("browser-facing change deferred because no application child is ready")
             return
 
+        decision = self._browser_invalidation(changed_paths)
         generation = self.state.generation + 1
         try:
             self._child.set_generation(
@@ -263,8 +270,60 @@ class Supervisor:
 
         self.state = replace(self.state, generation=generation)
         self._control.set_generation(generation)
-        self._control.publish(ControlEvent.reload(generation, reason="browser-change"))
-        logger.info("browser-facing state ready; generation %d", generation)
+        self._publish_browser_decision(decision, generation)
+        logger.info(
+            "browser-facing state ready; generation %d; action=%s; reload_views=%d",
+            generation,
+            decision.scope.value,
+            len(decision.reload_view_ids),
+        )
+
+    def _browser_invalidation(self, changed_paths: tuple[Path, ...]) -> InvalidationDecision:
+        self._refresh_direct_outputs()
+        control = self._require_control()
+        views = control.views.snapshot()
+        normalized = tuple(
+            self._direct_outputs.normalize_changed_path(path)
+            for path in changed_paths
+        )
+        return decide_browser_invalidation(
+            normalized,
+            known_outputs=self._direct_outputs.known_outputs,
+            output_views=self._direct_outputs.output_views,
+            active_view_ids=tuple(view.view_id for view in views),
+        )
+
+    def _publish_browser_decision(
+        self,
+        decision: InvalidationDecision,
+        generation: int,
+    ) -> None:
+        control = self._require_control()
+        if decision.current_view_ids:
+            control.mark_views_current(decision.current_view_ids, generation)
+            control.publish(
+                ControlEvent.sync(generation, reload_required=False),
+                view_ids=decision.current_view_ids,
+            )
+
+        if decision.scope is ReloadScope.NONE:
+            return
+
+        event = ControlEvent.reload(generation, reason=decision.reason)
+        if decision.scope is ReloadScope.ALL:
+            control.publish(event)
+            return
+        control.publish(event, view_ids=decision.reload_view_ids)
+
+    def _refresh_direct_outputs(self) -> None:
+        if self._control is None:
+            return
+        view_urls = {
+            view.view_id: view.url
+            for view in self._control.views.snapshot()
+            if view.url
+        }
+        self._direct_outputs.reconcile(view_urls)
 
     def _create_watcher(self) -> FileWatcher:
         roots = self.config.watch_roots or (Path.cwd(),)
@@ -285,7 +344,7 @@ class Supervisor:
             return
 
         if changes.browser_paths:
-            logger.info("%s changed -> browser reload", rendered)
+            logger.info("%s changed -> browser invalidation", rendered)
             return
 
         logger.info("%s changed -> no action", rendered)

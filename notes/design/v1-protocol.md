@@ -257,13 +257,23 @@ Streaming or otherwise non-injectable pages retain normal application behavior b
 
 ## 17. Static and generated HTML
 
-When a URL maps directly to a served HTML file, that file is the direct render/output dependency for the view.
+Phase 5 adds a narrow direct-output provenance index. A browser URL is eligible for zero-touch direct mapping only when its path names an explicit `.html`/`.htm` document or a trailing-slash `index.html` document. Kyth resolves that relative path against the configured watch roots and accepts the relationship only when exactly one matching file currently exists. Extensionless routes and ambiguous matches remain unknown.
 
-Changing another HTML file does not reload the view unless a build manifest or other dependency provider says the current output depends on it.
+The index records `view -> output file` relationships for active views and retains the identities of outputs that were previously observed even after their views disappear. This permits a known inactive output to change without forcing eager browser work.
+
+Browser invalidation and presentation are separate decisions:
+
+- if every changed browser-facing path is a previously known direct HTML output, only views mapped to those outputs are reloaded;
+- other active views with known direct outputs are marked valid through the new generation without navigation;
+- active views whose document relationship is unknown are still reloaded conservatively;
+- if a changed path is not a known direct output, Kyth falls back to the Phase 4 application-wide reload;
+- if a known direct output changes while no active view depends on it and all active views have known unrelated direct outputs, no browser reload occurs.
+
+Targeted events are delivered by view identity through the persistent SSE broker. The global development generation still advances for a coherent browser-facing change, but a generation advance alone does not imply that every view is stale. The control registry records unaffected views as valid through that generation. On SSE reconnect, `sync` therefore carries a per-view `reload_required` decision so an unrelated prior change does not cause a delayed reload.
 
 For generated sites, browser synchronization normally waits for the generated output to change rather than reacting immediately to its source input.
 
-A generator may optionally provide source-to-output dependencies so Kyth can mark outputs stale before or independently of regeneration.
+A generator may optionally provide source-to-output dependencies so Kyth can mark outputs stale before or independently of regeneration; that manifest behavior remains Phase 8.
 
 ## 18. Template provenance
 
