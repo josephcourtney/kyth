@@ -18,6 +18,7 @@ CLIENT_JAVASCRIPT = (
   }
 
   const VIEW_KEY = "__kyth_view_id__";
+  const REGISTRATION_SEQUENCE_KEY = "__kyth_registration_sequence__";
   const PENDING_GENERATION_KEY = "__kyth_pending_generation__";
   const PRESERVED_STATE_KEY = "__kyth_preserved_state__";
   const DEFAULT_RESOURCE_TIMING_CAPACITY = 250;
@@ -168,6 +169,11 @@ CLIENT_JAVASCRIPT = (
     sessionSet(VIEW_KEY, viewId);
   }
 
+  let registrationSequence = Number(sessionGet(REGISTRATION_SEQUENCE_KEY) || "0");
+  if (!Number.isSafeInteger(registrationSequence) || registrationSequence < 0) {
+    registrationSequence = 0;
+  }
+
   const pendingGeneration = Number(sessionGet(PENDING_GENERATION_KEY) || "0");
   let pageGeneration = injectedGeneration;
   if (Number.isFinite(pendingGeneration) && pendingGeneration > pageGeneration) {
@@ -274,6 +280,9 @@ CLIENT_JAVASCRIPT = (
 
   async function registerView() {
     const snapshot = resourceSnapshot();
+    registrationSequence += 1;
+    sessionSet(REGISTRATION_SEQUENCE_KEY, String(registrationSequence));
+    const sequence = registrationSequence;
     const url = new URL("/views", control);
     url.searchParams.set("token", token);
     try {
@@ -284,6 +293,7 @@ CLIENT_JAVASCRIPT = (
           view_id: viewId,
           url: location.href,
           generation: pageGeneration,
+          registration_sequence: sequence,
           render_id: renderId,
           resources: snapshot.resources,
           resources_complete: snapshot.complete,
