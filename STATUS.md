@@ -4,24 +4,27 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-Kyth v0.2.0 is in hardening. Feature expansion and application hooks remain deferred. Current work is improving test architecture and robustness while preserving behavior.
+The V1 design surface is implemented. Current work is hardening, portability, and maintenance rather than feature completion.
 
 ## Current state
 
-- the validated v0.2.0 baseline passes `just check`;
-- dead-code and duplication scans report no findings;
-- aggregate source coverage is about 83.9% lines / 69.5% branches; the weakest areas are now concentrated in control error paths, socket handling, manifest validation, and supervisor edge branches;
-- complexity analysis uses Radon's public Python API through `scripts/complexity.py`, avoiding Radon 6.0.1's broken CLI configuration loader and failing closed on analysis errors;
-- property-based tests exercise pure batch, invalidation, generation, protocol, and path-safety invariants in the normal Python suite;
-- additional small fault-injection tests cover render reporting and child-process readiness/control/escalation policy without spawning processes;
-- the full 64-case real-browser acceptance matrix passes across Chromium and Firefox, covering injection, restart/readiness gating, narrow updates, conservative fallbacks, reconnect recovery, Jinja provenance, and generated-output readiness;
-- browser installation/testing is explicit and remains outside `just check` so normal validation never downloads a browser;
-- mutation testing is deliberately deferred until the property and browser layers have been exercised and stabilized.
+- the current implementation passes `just check`;
+- `just complexity --strict` passes with every analyzed source block below the configured threshold;
+- the full 72-case real-browser acceptance matrix passes across Chromium and Firefox;
+- restart-requiring generated sources no longer reload a generated view until its rebuilt output is ready;
+- duplicate filesystem notifications describing the same observed file state are suppressed across logical batches;
+- runtime restart classification is extensible with repeated `--restart-on PATTERN` options;
+- verbose diagnostics expose a structured change-cycle report containing classifications, restart outcome, generated invalidations, affected views, browser actions, and resulting generation;
+- Kyth-managed ASGI responses use a development `Cache-Control: no-store` policy so immutable application caches cannot mask known changes;
+- explicit integrations are implemented without a plugin framework: `depend_on`, `depend_on_data`, custom readiness checks, semantic browser data updates, opt-in state preservation, startup-error events, and external-HMR ownership;
+- reconnect recovery closes the SSE stream when the browser goes offline, preventing buffered narrow updates from racing ahead of a fresh staleness sync;
+- property-based, fault-injection, lifecycle, provenance, and browser tests cover the corresponding invariants;
+- browser installation/testing remains explicit and outside `just check`.
 
 ## Remaining hardening priorities
 
-- keep `just check` and `just complexity --strict` green while hardening;
-- inspect remaining uncovered failure branches in control/process/supervisor code and add focused regression cases;
-- keep the established Chromium/Firefox acceptance matrix stable; add browser fixtures only for distinct newly discovered contracts;
-- only then introduce mutation testing for pure policy/provenance modules;
-- platform/socket-transfer matrix testing is explicitly later work.
+- inspect remaining uncovered failure branches in control/process/supervisor code and add focused regression cases rather than chasing aggregate coverage;
+- keep `just check`, `just complexity --strict`, and the Chromium/Firefox acceptance matrix green;
+- review remaining medium tests and extract pure policy assertions where doing so improves isolation;
+- introduce mutation testing selectively for pure policy/provenance modules;
+- rehearse socket transfer and child lifecycle across the intended operating-system and Python-version matrix.

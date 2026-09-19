@@ -24,9 +24,25 @@ Items should be categorized under these headings:
 - add a dedicated real-browser acceptance harness running the same contract against Chromium and Firefox
 - add browser fixture applications covering direct resources, pass-through responses, real Jinja provenance, generated manifests, multi-view targeting, CSP, reconnect recovery, and readiness-gated restart behavior
 - add explicit `browser-install` and `browser-test` development recipes
+- add repeated `--restart-on PATTERN` configuration for application-specific process-loaded runtime inputs
+- add repeated `--external-hmr-on PATTERN` configuration so an external frontend server can own selected browser changes
+- add structured change-cycle reports plus `--verbose` decision-chain diagnostics
+- add explicit `depend_on(path)` render dependencies and `depend_on_data(identity, path)` semantic browser-data dependencies
+- add targeted `data-update` and non-navigating `server-error` control events
+- add `kyth:data-update`, `kyth:server-error`, `kyth:before-reload`, and `kyth:restore-state` browser integration events
+- add synchronous/asynchronous `register_readiness_check` application readiness hooks
+
+### Changed
+
+- suppress duplicate filesystem notifications across logical batches when the observed file state has not changed
+- apply development `Cache-Control: no-store` semantics to Kyth-managed ASGI responses so reloads cannot be masked by immutable caches
+- narrow generated-source deferral to the outputs that actually depend on each source
+- close the browser EventSource while offline and require a fresh sync after connectivity returns
 
 ### Fixed
 
+- keep generated views deferred across restart-requiring source changes until their rebuilt generated output is ready
+- give generated-output deferral precedence over render-provenance and semantic-data actions for the same view
 - bypass Radon 6.0.1's faulty CLI configuration loader with a small wrapper around its public Python API, and stop masking complexity-tool failures as successful strict checks
 - run the Hypothesis property layer in a separate plain-assert pytest invocation with an in-memory example database so lazy Hypothesis imports do not violate small-test filesystem isolation while ordinary tests retain assertion rewriting
 - remove an artificial zero-duration sleep from the render-reporting transport-failure test
