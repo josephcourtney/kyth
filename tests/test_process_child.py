@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 import uvicorn
 
-import kyth.process.child as child
+from kyth.process import child
 from kyth.process.readiness import ChildCommand, GenerationApplied, GenerationUpdate, StartupEvent
 
 if TYPE_CHECKING:

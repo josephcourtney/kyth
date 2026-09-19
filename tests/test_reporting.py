@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-import kyth.injection.reporting as reporting
+from kyth.injection import reporting
 from kyth.model import RenderRecord, SourceVersion
 
 if TYPE_CHECKING:
@@ -127,7 +127,8 @@ async def test_report_render_record_swallows_transport_failure(monkeypatch: pyte
         _function: Callable[..., object],
         *_args: object,
     ) -> object:
-        raise OSError("control plane unavailable")
+        msg = "control plane unavailable"
+        raise OSError(msg)
 
     monkeypatch.setattr(reporting.asyncio, "to_thread", failing_to_thread)
 

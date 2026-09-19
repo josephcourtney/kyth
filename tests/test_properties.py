@@ -5,7 +5,8 @@ import string
 from pathlib import Path, PurePosixPath
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from kyth.changes import classify_batch
 from kyth.control.sse import encode_sse
@@ -51,10 +52,7 @@ def test_file_batch_merge_is_associative(
     third: list[tuple[str, FileOperation]],
 ) -> None:
     def batch(raw: list[tuple[str, FileOperation]]) -> FileBatch:
-        return FileBatch.from_events([
-            FileEvent(Path(name), operation)
-            for name, operation in raw
-        ])
+        return FileBatch.from_events([FileEvent(Path(name), operation) for name, operation in raw])
 
     a = batch(first)
     b = batch(second)
@@ -98,8 +96,7 @@ def test_unknown_browser_dependency_is_conservative(active: set[str]) -> None:
     )
 
     assert [(action.view_id, action.kind) for action in decision.actions] == [
-        (view_id, BrowserActionKind.RELOAD)
-        for view_id in sorted(active)
+        (view_id, BrowserActionKind.RELOAD) for view_id in sorted(active)
     ]
     assert decision.current_view_ids == ()
 

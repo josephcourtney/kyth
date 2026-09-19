@@ -126,8 +126,9 @@ def resource_harness(
 ) -> Iterator[_Harness]:
     _seed_resource_fixture(tmp_path)
     monkeypatch.setenv(RESOURCE_ROOT_ENV, str(tmp_path))
-    with _app_import_path():
-        with Supervisor(
+    with (
+        _app_import_path(),
+        Supervisor(
             SupervisorConfig(
                 "resource_app:app",
                 port=0,
@@ -135,17 +136,18 @@ def resource_harness(
                 shutdown_timeout=1.0,
                 watch_roots=(tmp_path,),
             )
-        ) as supervisor:
-            assert supervisor.start_child()
-            context = browser.new_context()
-            try:
-                page = context.new_page()
-                origin = _origin(supervisor)
-                page.goto(origin, wait_until="load")
-                _wait_for_complete_views(supervisor, 1)
-                yield _Harness(context, page, supervisor, origin, tmp_path)
-            finally:
-                context.close()
+        ) as supervisor,
+    ):
+        assert supervisor.start_child()
+        context = browser.new_context()
+        try:
+            page = context.new_page()
+            origin = _origin(supervisor)
+            page.goto(origin, wait_until="load")
+            _wait_for_complete_views(supervisor, 1)
+            yield _Harness(context, page, supervisor, origin, tmp_path)
+        finally:
+            context.close()
 
 
 @pytest.fixture
@@ -156,8 +158,9 @@ def jinja_harness(
 ) -> Iterator[_Harness]:
     _seed_jinja_fixture(tmp_path)
     monkeypatch.setenv(RESOURCE_ROOT_ENV, str(tmp_path))
-    with _app_import_path():
-        with Supervisor(
+    with (
+        _app_import_path(),
+        Supervisor(
             SupervisorConfig(
                 "jinja_app:app",
                 port=0,
@@ -165,18 +168,19 @@ def jinja_harness(
                 shutdown_timeout=1.0,
                 watch_roots=(tmp_path,),
             )
-        ) as supervisor:
-            assert supervisor.start_child()
-            context = browser.new_context()
-            try:
-                page = context.new_page()
-                origin = _origin(supervisor)
-                page.goto(f"{origin}/a/", wait_until="load")
-                _wait_for_complete_views(supervisor, 1)
-                _wait_for_render_records(supervisor, 1)
-                yield _Harness(context, page, supervisor, origin, tmp_path)
-            finally:
-                context.close()
+        ) as supervisor,
+    ):
+        assert supervisor.start_child()
+        context = browser.new_context()
+        try:
+            page = context.new_page()
+            origin = _origin(supervisor)
+            page.goto(f"{origin}/a/", wait_until="load")
+            _wait_for_complete_views(supervisor, 1)
+            _wait_for_render_records(supervisor, 1)
+            yield _Harness(context, page, supervisor, origin, tmp_path)
+        finally:
+            context.close()
 
 
 @pytest.fixture
@@ -206,8 +210,9 @@ def manifest_harness(
         encoding="utf-8",
     )
     monkeypatch.setenv(RESOURCE_ROOT_ENV, str(tmp_path))
-    with _app_import_path():
-        with Supervisor(
+    with (
+        _app_import_path(),
+        Supervisor(
             SupervisorConfig(
                 "resource_app:app",
                 port=0,
@@ -216,17 +221,18 @@ def manifest_harness(
                 watch_roots=(tmp_path,),
                 manifest_paths=(manifest,),
             )
-        ) as supervisor:
-            assert supervisor.start_child()
-            context = browser.new_context()
-            try:
-                page = context.new_page()
-                origin = _origin(supervisor)
-                page.goto(f"{origin}/generated/", wait_until="load")
-                _wait_for_complete_views(supervisor, 1)
-                yield _Harness(context, page, supervisor, origin, tmp_path)
-            finally:
-                context.close()
+        ) as supervisor,
+    ):
+        assert supervisor.start_child()
+        context = browser.new_context()
+        try:
+            page = context.new_page()
+            origin = _origin(supervisor)
+            page.goto(f"{origin}/generated/", wait_until="load")
+            _wait_for_complete_views(supervisor, 1)
+            yield _Harness(context, page, supervisor, origin, tmp_path)
+        finally:
+            context.close()
 
 
 @pytest.fixture
@@ -234,8 +240,9 @@ def passthrough_harness(
     tmp_path: Path,
     browser: _Browser,
 ) -> Iterator[_Harness]:
-    with _app_import_path():
-        with Supervisor(
+    with (
+        _app_import_path(),
+        Supervisor(
             SupervisorConfig(
                 "passthrough_app:app",
                 port=0,
@@ -243,24 +250,22 @@ def passthrough_harness(
                 shutdown_timeout=1.0,
                 watch_roots=(tmp_path,),
             )
-        ) as supervisor:
-            assert supervisor.start_child()
-            context = browser.new_context()
-            try:
-                page = context.new_page()
-                yield _Harness(context, page, supervisor, _origin(supervisor), tmp_path)
-            finally:
-                context.close()
+        ) as supervisor,
+    ):
+        assert supervisor.start_child()
+        context = browser.new_context()
+        try:
+            page = context.new_page()
+            yield _Harness(context, page, supervisor, _origin(supervisor), tmp_path)
+        finally:
+            context.close()
 
 
 def test_client_registers_complete_resource_snapshot(resource_harness: _Harness) -> None:
     view = _single_view(resource_harness.supervisor)
 
     assert view.resources_complete is True
-    assert {
-        (urlsplit(resource.url).path, resource.kind.value)
-        for resource in view.resources
-    } >= {
+    assert {(urlsplit(resource.url).path, resource.kind.value) for resource in view.resources} >= {
         ("/site.css", "stylesheet"),
         ("/logo.svg", "image"),
         ("/app.js", "javascript"),
@@ -628,9 +633,7 @@ def test_csp_page_allows_injected_client_and_control_connection(resource_harness
 
     _wait_for_registered_path(harness.supervisor, "/csp/")
 
-    assert harness.page.evaluate(
-        "() => document.querySelector('script[data-kyth-control]') !== null"
-    )
+    assert harness.page.evaluate("() => document.querySelector('script[data-kyth-control]') !== null")
 
 
 def test_html_fragment_without_closing_tags_still_registers(resource_harness: _Harness) -> None:
@@ -639,9 +642,7 @@ def test_html_fragment_without_closing_tags_still_registers(resource_harness: _H
 
     _wait_for_registered_path(harness.supervisor, "/fragment/")
 
-    assert harness.page.evaluate(
-        "() => document.querySelector('script[data-kyth-control]') !== null"
-    )
+    assert harness.page.evaluate("() => document.querySelector('script[data-kyth-control]') !== null")
 
 
 def test_missed_event_recovers_conservatively_after_sse_reconnect(resource_harness: _Harness) -> None:
@@ -771,9 +772,7 @@ def test_normal_buffered_html_is_injected(passthrough_harness: _Harness) -> None
     harness = passthrough_harness
     harness.page.goto(f"{harness.origin}/normal/", wait_until="load")
 
-    assert harness.page.evaluate(
-        "() => document.querySelector('script[data-kyth-control]') !== null"
-    )
+    assert harness.page.evaluate("() => document.querySelector('script[data-kyth-control]') !== null")
 
 
 @pytest.mark.parametrize(
@@ -949,7 +948,7 @@ def _page(status: str, *elements: str) -> str:
 def _svg(label: str) -> str:
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">'
-        f"<title>{label}</title><rect width=\"10\" height=\"10\"/>"
+        f'<title>{label}</title><rect width="10" height="10"/>'
         "</svg>"
     )
 
@@ -991,34 +990,30 @@ def _wait_for_complete_views(supervisor: Supervisor, expected: int) -> None:
         if len(views) == expected and all(view.resources_complete is True for view in views):
             return
         time.sleep(0.02)
-    raise AssertionError(f"browser did not register {expected} complete view(s)")
+    msg = f"browser did not register {expected} complete view(s)"
+    raise AssertionError(msg)
 
 
 def _wait_for_registered_path(supervisor: Supervisor, path: str) -> None:
     deadline = time.monotonic() + REGISTRATION_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         views = supervisor._require_control().views.snapshot()
-        if any(
-            urlsplit(view.url).path == path and view.resources_complete is True
-            for view in views
-        ):
+        if any(urlsplit(view.url).path == path and view.resources_complete is True for view in views):
             return
         time.sleep(0.02)
-    raise AssertionError(f"browser did not register path {path}")
+    msg = f"browser did not register path {path}"
+    raise AssertionError(msg)
 
 
 def _wait_for_resource_path(supervisor: Supervisor, path: str) -> None:
     deadline = time.monotonic() + REGISTRATION_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         views = supervisor._require_control().views.snapshot()
-        if any(
-            urlsplit(resource.url).path == path
-            for view in views
-            for resource in view.resources
-        ):
+        if any(urlsplit(resource.url).path == path for view in views for resource in view.resources):
             return
         time.sleep(0.02)
-    raise AssertionError(f"browser did not register resource {path}")
+    msg = f"browser did not register resource {path}"
+    raise AssertionError(msg)
 
 
 def _wait_for_render_records(supervisor: Supervisor, expected: int) -> None:
@@ -1026,14 +1021,13 @@ def _wait_for_render_records(supervisor: Supervisor, expected: int) -> None:
     while time.monotonic() < deadline:
         views = supervisor._require_control().views.snapshot()
         records = [
-            supervisor._require_control().renders.get(view.render_id)
-            for view in views
-            if view.render_id is not None
+            supervisor._require_control().renders.get(view.render_id) for view in views if view.render_id is not None
         ]
         if len(records) == expected and all(record is not None and record.complete for record in records):
             return
         time.sleep(0.02)
-    raise AssertionError(f"browser did not associate {expected} complete render record(s)")
+    msg = f"browser did not associate {expected} complete render record(s)"
+    raise AssertionError(msg)
 
 
 def _wait_for_generation(supervisor: Supervisor, generation: int) -> None:
@@ -1043,4 +1037,5 @@ def _wait_for_generation(supervisor: Supervisor, generation: int) -> None:
         if len(views) == 1 and views[0].generation == generation:
             return
         time.sleep(0.02)
-    raise AssertionError(f"browser did not acknowledge generation {generation}")
+    msg = f"browser did not acknowledge generation {generation}"
+    raise AssertionError(msg)
