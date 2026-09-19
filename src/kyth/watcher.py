@@ -21,7 +21,10 @@ class ObservedPathState:
 
     exists: bool
     mtime_ns: int | None = None
+    ctime_ns: int | None = None
     size: int | None = None
+    device: int | None = None
+    inode: int | None = None
 
 
 class BatchDeduplicator:
@@ -186,4 +189,11 @@ def _observe_path(path: Path) -> ObservedPathState:
         stat = path.stat()
     except OSError:
         return ObservedPathState(exists=False)
-    return ObservedPathState(exists=True, mtime_ns=stat.st_mtime_ns, size=stat.st_size)
+    return ObservedPathState(
+        exists=True,
+        mtime_ns=stat.st_mtime_ns,
+        ctime_ns=stat.st_ctime_ns,
+        size=stat.st_size,
+        device=stat.st_dev,
+        inode=stat.st_ino,
+    )
