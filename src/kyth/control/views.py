@@ -20,6 +20,7 @@ class BrowserView:
     last_seen: float
     resources: tuple[BrowserResource, ...] = ()
     resources_complete: bool | None = None
+    registration_sequence: int = 0
 
 
 class ViewRegistry:
@@ -49,11 +50,18 @@ class ViewRegistry:
         render_id: str | None = None,
         resources: tuple[BrowserResource, ...] = (),
         resources_complete: bool | None = None,
+        registration_sequence: int = 0,
     ) -> BrowserView:
         now = self._clock()
         with self._lock:
             current = self._views.get(view_id)
-            if current is not None and generation < current.generation:
+            if current is not None and (
+                generation < current.generation
+                or (
+                    generation == current.generation
+                    and registration_sequence < current.registration_sequence
+                )
+            ):
                 current = replace(current, last_seen=now)
                 self._views[view_id] = current
                 return current
@@ -66,6 +74,7 @@ class ViewRegistry:
                 now,
                 resources,
                 resources_complete,
+                registration_sequence,
             )
             self._views[view_id] = view
             return view
