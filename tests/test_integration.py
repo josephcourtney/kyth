@@ -1,8 +1,9 @@
+import asyncio
 from pathlib import Path
 
 import pytest
 
-from kyth.injection import depend_on, depend_on_data
+from kyth.injection import depend_on, depend_on_data, register_readiness_check
 from kyth.injection.jinja import capture_render
 
 
@@ -73,3 +74,43 @@ def test_depend_on_data_records_semantic_dependency(tmp_path: Path) -> None:
 def test_depend_on_data_rejects_empty_identity() -> None:
     with pytest.raises(ValueError, match="identity must be non-empty"):
         depend_on_data("", "/tmp/data.json")
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_registered_readiness_checks_support_sync_and_async(monkeypatch: pytest.MonkeyPatch) -> None:
+    from kyth.injection import integration
+
+    monkeypatch.setattr(integration, "_READINESS_CHECKS", [])
+    calls: list[str] = []
+
+    @register_readiness_check
+    def sync_check() -> bool:
+        calls.append("sync")
+        return True
+
+    @register_readiness_check
+    async def async_check() -> None:
+        await asyncio.sleep(0)
+        calls.append("async")
+
+    await integration.run_readiness_checks()
+
+    assert calls == ["sync", "async"]
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_false_readiness_check_fails_startup_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    from kyth.injection import integration
+
+    monkeypatch.setattr(integration, "_READINESS_CHECKS", [])
+
+    @register_readiness_check
+    def not_ready() -> bool:
+        return False
+
+    with pytest.raises(RuntimeError, match="custom readiness check returned false"):
+        await integration.run_readiness_checks()

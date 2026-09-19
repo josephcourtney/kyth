@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 import uvicorn
 
 from kyth.injection import ASGIApp, HTMLInjectionMiddleware, InjectionConfig
+from kyth.injection.integration import run_readiness_checks
 from kyth.process.readiness import ChildCommand, GenerationApplied, GenerationUpdate, StartupEvent
 from kyth.process.socket import rebuild_listening_socket
 
@@ -35,10 +36,16 @@ class _ReadinessServer(uvicorn.Server):
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
         await super().startup(sockets=sockets)
-        if self.started:
-            self._report(StartupEvent.ready())
-        else:
+        if not self.started:
             self._report(StartupEvent.failed("ASGI lifespan startup did not complete"))
+            return
+        try:
+            await run_readiness_checks()
+        except Exception as exc:  # noqa: BLE001 - application checks are a startup boundary
+            self.should_exit = True
+            self._report(StartupEvent.failed(f"custom readiness check failed: {exc}"))
+            return
+        self._report(StartupEvent.ready())
 
 
 def _watch_control(
