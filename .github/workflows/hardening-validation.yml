@@ -58,6 +58,19 @@ jobs:
           tests/test_process_manager.py
           tests/test_lifecycle.py
 
+  mutation:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+      - name: narrow mutation diagnostic
+        run: uv run just mutation
+
   browser:
     needs: static
     runs-on: ubuntu-latest
