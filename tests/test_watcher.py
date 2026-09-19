@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -115,7 +114,7 @@ def test_batch_deduplicator_keeps_atomic_replacement_with_same_mtime_and_size(tm
         replacement,
         ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
     )
-    os.replace(replacement, path)
+    replacement.replace(path)
 
     replaced_stat = path.stat()
     assert replaced_stat.st_size == original_stat.st_size
