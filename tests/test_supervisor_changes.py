@@ -166,7 +166,7 @@ def test_restart_defers_view_until_stale_generated_output_is_ready(tmp_path: Pat
             patch.object(supervisor, "_start_child", side_effect=start_ready),
             patch.object(control, "publish") as publish,
         ):
-            supervisor._restart_for_change_cycle()
+            supervisor._restart_for_change_cycle((source_path,))
 
         assert control.generation == 1
         assert control.views.get("generated").generation == 1
@@ -213,3 +213,22 @@ def test_generated_source_deferral_is_limited_to_dependent_outputs(tmp_path: Pat
 
     assert deferred[first_source.resolve()] == ("first-view",)
     assert deferred[second_source.resolve()] == ("second-view",)
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_no_action_batch_records_explainable_change_report() -> None:
+    supervisor = Supervisor(SupervisorConfig("example:app"))
+    source = _PendingBatches([])
+
+    supervisor._handle_change_cycle(_batch("/project/README.md"), source)
+
+    report = supervisor.last_change_report
+    assert report is not None
+    assert report.changed_paths == (Path("/project/README.md"),)
+    assert report.restart_requested is False
+    assert report.restart_succeeded is None
+    assert report.browser_actions == ()
+    assert report.affected_view_ids == ()
+    assert report.generation == 0
+    assert report.reason == "no-action"

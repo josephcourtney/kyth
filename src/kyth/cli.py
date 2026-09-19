@@ -18,6 +18,7 @@ def _parser() -> argparse.ArgumentParser:
         description="Run an ASGI application under the Kyth development supervisor.",
     )
     parser.add_argument("app", help="ASGI import target, for example package.module:app")
+    parser.add_argument("-v", "--verbose", action="store_true", help="show detailed reload-decision diagnostics")
     parser.add_argument("--host", default="127.0.0.1", help="application host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="application port (default: 8000)")
     parser.add_argument("--startup-timeout", type=float, default=10.0, help="seconds to wait for ASGI startup")
@@ -64,7 +65,10 @@ def _parser() -> argparse.ArgumentParser:
 
 def cli(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
     watch_roots = tuple(args.watch_roots) if args.watch_roots else (Path.cwd(),)
     config = SupervisorConfig(
         app_target=args.app,

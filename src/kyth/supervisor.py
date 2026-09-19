@@ -5,9 +5,9 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
-from kyth.changes import ChangePolicy, ChangeSet, classify_batch
+from kyth.changes import ChangePolicy, ChangeSet, ClassifiedPath, classify_batch
 from kyth.control import ControlService
-from kyth.invalidation import BrowserActionKind, BrowserUpdateDecision, decide_browser_updates
+from kyth.invalidation import BrowserAction, BrowserActionKind, BrowserUpdateDecision, decide_browser_updates
 from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch, FileOperation
 from kyth.process.manager import ChildProcess
 from kyth.process.socket import DEFAULT_BACKLOG, bind_listening_socket
@@ -49,6 +49,21 @@ class SupervisorConfig:
     restart_patterns: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class ChangeCycleReport:
+    """Explain one processed filesystem batch and its observable consequences."""
+
+    changed_paths: tuple[Path, ...]
+    classifications: tuple[ClassifiedPath, ...]
+    restart_requested: bool
+    restart_succeeded: bool | None
+    invalidated_outputs: tuple[Path, ...]
+    affected_view_ids: tuple[str, ...]
+    browser_actions: tuple[BrowserAction, ...]
+    generation: int
+    reason: str
+
+
 class Supervisor:
     """Long-lived owner of the public socket, control plane, and application child."""
 
@@ -67,6 +82,11 @@ class Supervisor:
         self._generated = GeneratedManifestIndex(config.manifest_paths)
         self._change_policy = ChangePolicy(config.restart_patterns)
         self._deduplicator = BatchDeduplicator()
+        self._last_change_report: ChangeCycleReport | None = None
+
+    @property
+    def last_change_report(self) -> ChangeCycleReport | None:
+        return self._last_change_report
 
     @property
     def address(self) -> tuple[str, int]:
@@ -266,11 +286,21 @@ class Supervisor:
             self._log_change_set(changes, relevant_paths, stale_outputs)
             self._generated.mark_outputs_updated(relevant_paths)
 
+            decision: BrowserUpdateDecision | None = None
+            restart_succeeded: bool | None = None
             if changes.requires_restart:
-                self._restart_for_change_cycle()
+                decision = self._restart_for_change_cycle(changes.batch.paths)
+                restart_succeeded = decision is not None
             elif relevant_paths:
-                self._reload_for_browser_change(relevant_paths)
-            else:
+                decision = self._reload_for_browser_change(relevant_paths)
+
+            self._record_change_report(
+                changes,
+                stale_outputs=stale_outputs,
+                decision=decision,
+                restart_succeeded=restart_succeeded,
+            )
+            if not changes.requires_restart and not relevant_paths:
                 return
 
             pending = source.drain_pending()
@@ -278,37 +308,34 @@ class Supervisor:
                 return
             batch = pending
 
-    def _restart_for_change_cycle(self) -> None:
+    def _restart_for_change_cycle(self, changed_paths: tuple[Path, ...]) -> BrowserUpdateDecision | None:
         """Replace the child, then synchronize only views whose served state is ready."""
         self.stop_child()
         if not self._start_child(reload_browsers=False, commit_control=False):
-            return
+            return None
 
         control = self._require_control()
         generation = self.state.generation
         deferred_view_ids = self._stale_generated_view_ids()
-        if deferred_view_ids:
-            control.mark_views_current(deferred_view_ids, generation)
-        control.set_generation(generation)
-        if deferred_view_ids:
-            control.publish(
-                ControlEvent.sync(generation, reload_required=False),
-                view_ids=deferred_view_ids,
-            )
-
         active_view_ids = {view.view_id for view in control.views.snapshot()}
         reload_view_ids = tuple(sorted(active_view_ids - set(deferred_view_ids)))
-        if reload_view_ids:
-            control.publish(
-                ControlEvent.reload(generation, reason="server-restart"),
-                view_ids=reload_view_ids,
-            )
+        decision = BrowserUpdateDecision(
+            invalidated_paths=changed_paths,
+            actions=tuple(BrowserAction(view_id, BrowserActionKind.RELOAD) for view_id in reload_view_ids),
+            current_view_ids=deferred_view_ids,
+            reason="server-restart",
+        )
+        if decision.current_view_ids:
+            control.mark_views_current(decision.current_view_ids, generation)
+        control.set_generation(generation)
+        self._publish_browser_decision(decision, generation)
         logger.info(
             "replacement child ready; generation %d; %d view(s) reloaded; %d generated view(s) deferred",
             generation,
             len(reload_view_ids),
             len(deferred_view_ids),
         )
+        return decision
 
     def _stale_generated_view_ids(self) -> tuple[str, ...]:
         control = self._require_control()
@@ -323,10 +350,10 @@ class Supervisor:
         }
         return tuple(sorted(deferred))
 
-    def _reload_for_browser_change(self, changed_paths: tuple[Path, ...]) -> None:
+    def _reload_for_browser_change(self, changed_paths: tuple[Path, ...]) -> BrowserUpdateDecision | None:
         if self._child is None or self.state.child.status is not ChildStatus.READY or self._control is None:
             logger.info("browser-facing change deferred because no application child is ready")
-            return
+            return None
 
         decision = self._browser_updates(changed_paths)
         generation = self.state.generation + 1
@@ -337,8 +364,7 @@ class Supervisor:
             )
         except RuntimeError:
             logger.warning("child generation update failed; restarting application before browser reload")
-            self.restart_child()
-            return
+            return self._restart_for_change_cycle(changed_paths)
 
         if decision.current_view_ids:
             self._control.mark_views_current(decision.current_view_ids, generation)
@@ -354,6 +380,7 @@ class Supervisor:
             decision.reason,
             action_counts,
         )
+        return decision
 
     def _browser_updates(self, changed_paths: tuple[Path, ...]) -> BrowserUpdateDecision:
         self._refresh_provenance()
@@ -485,6 +512,43 @@ class Supervisor:
                 debounce_ms=self.config.watch_debounce_ms,
                 step_ms=self.config.watch_step_ms,
             )
+        )
+
+    def _record_change_report(
+        self,
+        changes: ChangeSet,
+        *,
+        stale_outputs: tuple[Path, ...],
+        decision: BrowserUpdateDecision | None,
+        restart_succeeded: bool | None,
+    ) -> None:
+        actions = () if decision is None else decision.actions
+        affected_view_ids = tuple(sorted(action.view_id for action in actions))
+        reason = "no-action" if decision is None else decision.reason
+        report = ChangeCycleReport(
+            changed_paths=changes.batch.paths,
+            classifications=changes.paths,
+            restart_requested=changes.requires_restart,
+            restart_succeeded=restart_succeeded,
+            invalidated_outputs=stale_outputs,
+            affected_view_ids=affected_view_ids,
+            browser_actions=actions,
+            generation=self.state.generation,
+            reason=reason,
+        )
+        self._last_change_report = report
+        logger.debug(
+            "change decision: paths=%s classifications=%s restart=%s/%s invalidated_outputs=%s "
+            "affected_views=%s actions=%s generation=%d reason=%s",
+            tuple(_display_path(path) for path in report.changed_paths),
+            tuple((item.path.as_posix(), item.effect.value) for item in report.classifications),
+            report.restart_requested,
+            report.restart_succeeded,
+            tuple(path.as_posix() for path in report.invalidated_outputs),
+            report.affected_view_ids,
+            tuple((action.view_id, action.kind.value, action.resource_urls) for action in report.browser_actions),
+            report.generation,
+            report.reason,
         )
 
     @staticmethod
