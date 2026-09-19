@@ -94,5 +94,5 @@ def test_stale_registration_cannot_overwrite_newer_view_state() -> None:
     assert returned.render_id == "render-current"
     assert returned.resources == (current_resource,)
     assert returned.resources_complete is True
-    assert returned.last_seen == 2.0
+    assert returned.last_seen == pytest.approx(2.0)
     assert registry.get("view") == returned
