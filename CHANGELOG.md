@@ -51,6 +51,8 @@ Items should be categorized under these headings:
 
 ### Changed
 
+- factor generated-manifest loading, output parsing, indexing, and URL validation into smaller single-purpose validators without changing the version-1 manifest format
+
 - make control-plane generation commits explicit per affected view rather than treating every global generation as universally stale
 - keep narrow-update targets stale until browser success is confirmed by re-registration
 - treat generated source changes as output invalidation rather than immediate browser synchronization

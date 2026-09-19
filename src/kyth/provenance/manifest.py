@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING
-from urllib.parse import unquote, urlsplit
+from typing import TYPE_CHECKING, cast
+from urllib.parse import SplitResult, unquote, urlsplit
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -39,16 +39,39 @@ class DependencyManifest:
 def load_manifest(path: Path) -> DependencyManifest:
     """Load and validate one versioned generated-site dependency manifest."""
     manifest_path = path.expanduser().resolve(strict=False)
+    raw = _load_json(manifest_path)
+    return _parse_manifest(raw, manifest_path=manifest_path)
+
+
+def _load_json(manifest_path: Path) -> object:
     try:
-        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         msg = f"cannot load manifest {manifest_path}: {exc}"
         raise ManifestError(msg) from exc
+
+
+def _parse_manifest(raw: object, *, manifest_path: Path) -> DependencyManifest:
+    document = _manifest_document(raw)
+    _validate_manifest_version(document)
+    raw_outputs = _manifest_outputs(document)
+    outputs = tuple(_parse_output(item, base=manifest_path.parent) for item in raw_outputs)
+    _validate_unique_output_paths(outputs)
+    return DependencyManifest(
+        manifest_path,
+        tuple(sorted(outputs, key=lambda item: item.output.as_posix())),
+    )
+
+
+def _manifest_document(raw: object) -> dict[str, object]:
     if not isinstance(raw, dict):
         msg = "manifest root must be a JSON object"
         raise TypeError(msg)
+    return cast("dict[str, object]", raw)
 
-    version = raw.get("version")
+
+def _validate_manifest_version(document: Mapping[str, object]) -> None:
+    version = document.get("version")
     if not isinstance(version, int) or isinstance(version, bool):
         msg = "manifest version must be an integer"
         raise TypeError(msg)
@@ -56,20 +79,23 @@ def load_manifest(path: Path) -> DependencyManifest:
         msg = f"unsupported manifest version: {version!r}"
         raise ManifestError(msg)
 
-    raw_outputs = raw.get("outputs")
-    if not isinstance(raw_outputs, list):
+
+def _manifest_outputs(document: Mapping[str, object]) -> list[object]:
+    outputs = document.get("outputs")
+    if not isinstance(outputs, list):
         msg = "manifest outputs must be a JSON array"
         raise TypeError(msg)
-    if len(raw_outputs) > MAX_MANIFEST_OUTPUTS:
+    if len(outputs) > MAX_MANIFEST_OUTPUTS:
         msg = "manifest contains too many outputs"
         raise ManifestError(msg)
+    return cast("list[object]", outputs)
 
-    outputs = tuple(_parse_output(item, base=manifest_path.parent) for item in raw_outputs)
+
+def _validate_unique_output_paths(outputs: Collection[ManifestOutput]) -> None:
     paths = [entry.output for entry in outputs]
     if len(paths) != len(set(paths)):
         msg = "manifest output paths must be unique"
         raise ManifestError(msg)
-    return DependencyManifest(manifest_path, tuple(sorted(outputs, key=lambda item: item.output.as_posix())))
 
 
 class GeneratedManifestIndex:
@@ -169,27 +195,54 @@ def _build_indexes(
     url_outputs: dict[str, Path] = {}
     for manifest in manifests:
         for entry in manifest.outputs:
-            if entry.output in known_outputs:
-                msg = f"generated output is declared by multiple manifests: {entry.output}"
-                raise ManifestError(msg)
-            known_outputs.add(entry.output)
-            if entry.url_path is not None:
-                if entry.url_path in url_outputs:
-                    msg = f"generated URL is declared by multiple outputs: {entry.url_path}"
-                    raise ManifestError(msg)
-                url_outputs[entry.url_path] = entry.output
-            for source in entry.sources:
-                source_outputs.setdefault(source, set()).add(entry.output)
+            _add_output_indexes(
+                entry,
+                source_outputs=source_outputs,
+                known_outputs=known_outputs,
+                url_outputs=url_outputs,
+            )
     return source_outputs, known_outputs, url_outputs
 
 
+def _add_output_indexes(
+    entry: ManifestOutput,
+    *,
+    source_outputs: dict[Path, set[Path]],
+    known_outputs: set[Path],
+    url_outputs: dict[str, Path],
+) -> None:
+    if entry.output in known_outputs:
+        msg = f"generated output is declared by multiple manifests: {entry.output}"
+        raise ManifestError(msg)
+    known_outputs.add(entry.output)
+
+    if entry.url_path is not None:
+        if entry.url_path in url_outputs:
+            msg = f"generated URL is declared by multiple outputs: {entry.url_path}"
+            raise ManifestError(msg)
+        url_outputs[entry.url_path] = entry.output
+
+    for source in entry.sources:
+        source_outputs.setdefault(source, set()).add(entry.output)
+
+
 def _parse_output(value: object, *, base: Path) -> ManifestOutput:
+    output_value, sources_value, url_value = _output_fields(value)
+    output = _resolve_output_path(output_value, base=base)
+    sources = _parse_source_paths(sources_value, base=base, output_value=output_value)
+    url_path = _validate_url_path(url_value) if url_value is not None else None
+    return ManifestOutput(output, sources, url_path)
+
+
+def _output_fields(value: object) -> tuple[str, list[object], str | None]:
     if not isinstance(value, dict):
         msg = "each manifest output must be a JSON object"
         raise TypeError(msg)
+
     output_value = value.get("output")
     sources_value = value.get("sources")
     url_value = value.get("url")
+
     if not isinstance(output_value, str):
         msg = "manifest output path must be a string"
         raise TypeError(msg)
@@ -203,42 +256,63 @@ def _parse_output(value: object, *, base: Path) -> ManifestOutput:
         msg = "manifest output contains too many sources"
         raise ManifestError(msg)
 
-    output = _resolve_relative_path(output_value, base=base, label="output")
-    if output.suffix.lower() not in HTML_SUFFIXES:
-        msg = f"manifest output must be HTML: {output_value!r}"
-        raise ManifestError(msg)
+    return output_value, cast("list[object]", sources_value), url_value
 
-    sources: list[Path] = []
-    for source_value in sources_value:
-        if not isinstance(source_value, str):
-            msg = "manifest source path must be a string"
-            raise TypeError(msg)
-        sources.append(_resolve_relative_path(source_value, base=base, label="source"))
+
+def _resolve_output_path(value: str, *, base: Path) -> Path:
+    output = _resolve_relative_path(value, base=base, label="output")
+    if output.suffix.lower() not in HTML_SUFFIXES:
+        msg = f"manifest output must be HTML: {value!r}"
+        raise ManifestError(msg)
+    return output
+
+
+def _parse_source_paths(
+    values: Collection[object],
+    *,
+    base: Path,
+    output_value: str,
+) -> tuple[Path, ...]:
+    sources = tuple(_parse_source_path(value, base=base) for value in values)
     if not sources:
         msg = f"manifest output must declare at least one source: {output_value!r}"
         raise ManifestError(msg)
-    return ManifestOutput(
-        output,
-        tuple(sorted(set(sources), key=Path.as_posix)),
-        _validate_url_path(url_value) if url_value is not None else None,
-    )
+    return tuple(sorted(set(sources), key=Path.as_posix))
+
+
+def _parse_source_path(value: object, *, base: Path) -> Path:
+    if not isinstance(value, str):
+        msg = "manifest source path must be a string"
+        raise TypeError(msg)
+    return _resolve_relative_path(value, base=base, label="source")
 
 
 def _validate_url_path(value: str) -> str:
     parsed = urlsplit(value)
+    _validate_url_components(parsed, value=value)
+    decoded = unquote(parsed.path)
+    _validate_absolute_url_path(decoded, value=value)
+    _validate_normalized_url_path(decoded, value=value)
+    return decoded
+
+
+def _validate_url_components(parsed: SplitResult, *, value: str) -> None:
     if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
         msg = f"manifest output url must be a path only: {value!r}"
         raise ManifestError(msg)
-    decoded = unquote(parsed.path)
+
+
+def _validate_absolute_url_path(decoded: str, *, value: str) -> None:
     if not decoded.startswith("/"):
         msg = f"manifest output url must be absolute: {value!r}"
         raise ManifestError(msg)
 
+
+def _validate_normalized_url_path(decoded: str, *, value: str) -> None:
     interior = decoded[1:-1] if decoded != "/" and decoded.endswith("/") else decoded[1:]
     if interior and any(part in {"", ".", ".."} for part in interior.split("/")):
         msg = f"manifest output url must be normalized: {value!r}"
         raise ManifestError(msg)
-    return decoded
 
 
 def _resolve_relative_path(value: str, *, base: Path, label: str) -> Path:
