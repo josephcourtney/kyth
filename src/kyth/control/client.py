@@ -199,6 +199,14 @@ CLIENT_JAVASCRIPT = (
       : null;
   }
 
+  function eventIdentities(payload) {
+    const identities = payload?.data?.identities;
+    return Array.isArray(identities) &&
+      identities.every((value) => typeof value === "string" && value.length > 0)
+      ? identities
+      : null;
+  }
+
   function cacheBust(value, generation) {
     const url = new URL(value, location.href);
     url.searchParams.set(CACHE_BUST_KEY, String(generation));
@@ -333,6 +341,31 @@ CLIENT_JAVASCRIPT = (
     return true;
   }
 
+  async function applyDataUpdates(identities, generation) {
+    const pending = [];
+    for (const identity of identities) {
+      let claimed = false;
+      const detail = {
+        identity,
+        generation,
+        handle(value) {
+          claimed = true;
+          pending.push(Promise.resolve(value));
+        },
+      };
+      dispatchEvent(new CustomEvent("kyth:data-update", {detail}));
+      if (!claimed) {
+        return false;
+      }
+    }
+    try {
+      await Promise.all(pending);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function commitNarrowUpdate(generation) {
     if (generation > pageGeneration) {
       pageGeneration = generation;
@@ -419,6 +452,33 @@ CLIENT_JAVASCRIPT = (
         }
         await commitNarrowUpdate(generation);
       });
+    });
+
+    events.addEventListener("data-update", (event) => {
+      const payload = payloadFromEvent(event);
+      enqueue(async () => {
+        const generation = generationFromPayload(payload);
+        const identities = eventIdentities(payload);
+        if (
+          identities === null ||
+          !Number.isFinite(generation) ||
+          generation <= pageGeneration ||
+          !(await applyDataUpdates(identities, generation))
+        ) {
+          reloadForGeneration(generation);
+          return;
+        }
+        await commitNarrowUpdate(generation);
+      });
+    });
+
+    events.addEventListener("server-error", (event) => {
+      const payload = payloadFromEvent(event);
+      const generation = generationFromPayload(payload);
+      const message = payload?.data?.message;
+      if (Number.isFinite(generation) && typeof message === "string") {
+        dispatchEvent(new CustomEvent("kyth:server-error", {detail: {generation, message}}));
+      }
     });
   }
 

@@ -169,6 +169,10 @@ def test_control_service_serves_token_gated_browser_client() -> None:
         assert 'addEventListener("reload"' in body
         assert 'addEventListener("css-update"' in body
         assert 'addEventListener("asset-update"' in body
+        assert 'addEventListener("data-update"' in body
+        assert 'addEventListener("server-error"' in body
+        assert '"kyth:data-update"' in body
+        assert '"kyth:server-error"' in body
         assert 'addEventListener("online", reconnectEvents)' in body
         assert "eventSource.close()" in body
         assert "resources_complete" in body

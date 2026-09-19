@@ -6,12 +6,15 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
+from kyth.injection import depend_on_data
+
 ROOT_ENV = "KYTH_BROWSER_FIXTURE_ROOT"
 FAIL_STARTUP_ENV = "KYTH_BROWSER_FAIL_STARTUP"
 
 _CONTENT_TYPES = {
     ".css": b"text/css",
     ".js": b"text/javascript",
+    ".json": b"application/json",
     ".svg": b"image/svg+xml",
     ".woff2": b"font/woff2",
 }
@@ -29,6 +32,8 @@ _PAGE_ROUTES = {
     "/fragment/": "fragment.html",
     "/two-css/": "two-css.html",
     "/generated/": "generated.html",
+    "/data/": "data.html",
+    "/data-unhandled/": "data-unhandled.html",
 }
 
 
@@ -43,6 +48,8 @@ async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
     path = str(scope["path"])
     page_name = _PAGE_ROUTES.get(path)
     if page_name is not None:
+        if path in {"/data/", "/data-unhandled/"}:
+            depend_on_data("inventory", root / "inventory.json")
         headers: list[tuple[bytes, bytes]] = []
         if path == "/csp/":
             headers.append((

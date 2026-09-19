@@ -742,6 +742,47 @@ def test_real_jinja_base_change_reloads_all_dependent_views(
         )
 
 
+def test_semantic_data_update_runs_handler_without_document_reload(
+    resource_harness: _Harness,
+) -> None:
+    harness = resource_harness
+    harness.page.goto(f"{harness.origin}/data/", wait_until="load")
+    _wait_for_registered_path(harness.supervisor, "/data/")
+    _wait_for_render_records(harness.supervisor, 1)
+    _set_sentinel(harness.page, "keep")
+    generation = harness.supervisor.state.generation + 1
+    data = harness.asset("inventory.json")
+    data.write_text('{"count": 2}', encoding="utf-8")
+
+    harness.supervisor._reload_for_browser_change((data,))
+
+    harness.page.wait_for_function(
+        "() => document.querySelector('#count').textContent === '2'",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+    assert _sentinel(harness.page) == "keep"
+    _wait_for_generation(harness.supervisor, generation)
+
+
+def test_unhandled_semantic_data_update_falls_back_to_reload(
+    resource_harness: _Harness,
+) -> None:
+    harness = resource_harness
+    harness.page.goto(f"{harness.origin}/data-unhandled/", wait_until="load")
+    _wait_for_registered_path(harness.supervisor, "/data-unhandled/")
+    _wait_for_render_records(harness.supervisor, 1)
+    _set_sentinel(harness.page, "discard")
+    data = harness.asset("inventory.json")
+    data.write_text('{"count": 3}', encoding="utf-8")
+
+    harness.supervisor._reload_for_browser_change((data,))
+
+    harness.page.wait_for_function(
+        "() => window.__kythSentinel === undefined",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+
+
 def test_generated_source_waits_for_rebuild_before_browser_reload(
     manifest_harness: _Harness,
 ) -> None:
@@ -857,6 +898,31 @@ def _seed_resource_fixture(root: Path) -> None:
     )
     root.joinpath("unknown.js").write_text(
         'window.__unknown = "one";',
+        encoding="utf-8",
+    )
+    root.joinpath("inventory.json").write_text('{"count": 1}', encoding="utf-8")
+    root.joinpath("data.html").write_text(
+        """<!doctype html>
+<html><head><script>
+addEventListener("kyth:data-update", (event) => {
+  if (event.detail.identity === "inventory") {
+    event.detail.handle(
+      fetch("/inventory.json")
+        .then((response) => response.json())
+        .then((data) => {
+          document.querySelector("#count").textContent = String(data.count);
+        })
+    );
+  }
+});
+</script></head><body>
+<h1 id="status">data</h1><span id="count">1</span>
+</body></html>
+""",
+        encoding="utf-8",
+    )
+    root.joinpath("data-unhandled.html").write_text(
+        _page("data-unhandled"),
         encoding="utf-8",
     )
     root.joinpath("index.html").write_text(
