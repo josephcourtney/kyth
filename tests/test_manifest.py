@@ -246,3 +246,45 @@ def test_manifest_index_rejects_output_declared_by_multiple_manifests(tmp_path: 
 
     with pytest.raises(ManifestError, match="generated output is declared by multiple manifests"):
         index.load_all()
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_shared_generated_source_keeps_unrebuilt_sibling_output_stale(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "kyth-manifest.json"
+    manifest_path.write_text(
+        json.dumps({
+            "version": 1,
+            "outputs": [
+                {
+                    "output": "public/first.html",
+                    "url": "/first/",
+                    "sources": ["content/shared.md"],
+                },
+                {
+                    "output": "public/second.html",
+                    "url": "/second/",
+                    "sources": ["content/shared.md"],
+                },
+            ],
+        }),
+        encoding="utf-8",
+    )
+    source = tmp_path / "content" / "shared.md"
+    first = tmp_path / "public" / "first.html"
+    second = tmp_path / "public" / "second.html"
+
+    index = GeneratedManifestIndex((manifest_path,))
+    index.load_all()
+
+    assert index.mark_sources_changed((source,)) == (
+        first.resolve(),
+        second.resolve(),
+    )
+    assert index.stale_outputs == frozenset({first.resolve(), second.resolve()})
+
+    assert index.mark_outputs_updated((first,)) == (first.resolve(),)
+    assert index.stale_outputs == frozenset({second.resolve()})
+
+    assert index.mark_outputs_updated((second,)) == (second.resolve(),)
+    assert index.stale_outputs == frozenset()
