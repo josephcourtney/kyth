@@ -197,7 +197,7 @@
     "src/kyth/changes.py",
     "src/kyth/protocol.py",
   ]
-  pytest_add_cli_args = ["--no-cov", "-q"]
+  pytest_add_cli_args = ["--no-cov", "-q", "--assert=plain"]
   pytest_add_cli_args_test_selection = [
     "tests/test_changes.py",
     "tests/test_control_protocol.py",
