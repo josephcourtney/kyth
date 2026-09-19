@@ -39,16 +39,21 @@ class ChangePolicy:
     """Configurable additions to Kyth's conservative default change policy."""
 
     restart_patterns: tuple[str, ...] = ()
+    external_hmr_patterns: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if any(not pattern.strip() for pattern in self.restart_patterns):
             msg = "restart patterns must be non-empty"
+            raise ValueError(msg)
+        if any(not pattern.strip() for pattern in self.external_hmr_patterns):
+            msg = "external HMR patterns must be non-empty"
             raise ValueError(msg)
 
 
 class ChangeEffect(StrEnum):
     SERVER_RESTART = "server-restart"
     BROWSER_CHANGE = "browser-change"
+    EXTERNAL_HMR = "external-hmr"
     OTHER = "other"
 
 
@@ -76,6 +81,10 @@ class ChangeSet:
         return tuple(item.path for item in self.paths if item.effect is ChangeEffect.BROWSER_CHANGE)
 
     @property
+    def external_hmr_paths(self) -> tuple[Path, ...]:
+        return tuple(item.path for item in self.paths if item.effect is ChangeEffect.EXTERNAL_HMR)
+
+    @property
     def other_paths(self) -> tuple[Path, ...]:
         return tuple(item.path for item in self.paths if item.effect is ChangeEffect.OTHER)
 
@@ -96,6 +105,8 @@ def classify_path(path: Path, *, policy: ChangePolicy | None = None) -> ChangeEf
         return ChangeEffect.SERVER_RESTART
     if any(path.match(pattern) for pattern in active_policy.restart_patterns):
         return ChangeEffect.SERVER_RESTART
+    if any(path.match(pattern) for pattern in active_policy.external_hmr_patterns):
+        return ChangeEffect.EXTERNAL_HMR
     if path.suffix.lower() in BROWSER_SUFFIXES:
         return ChangeEffect.BROWSER_CHANGE
     return ChangeEffect.OTHER

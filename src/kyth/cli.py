@@ -55,6 +55,14 @@ def _parser() -> argparse.ArgumentParser:
         help="additional path pattern that requires application restart; may be repeated",
     )
     parser.add_argument(
+        "--external-hmr-on",
+        dest="external_hmr_patterns",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="browser path pattern owned by an external HMR server; may be repeated",
+    )
+    parser.add_argument(
         "--control-port",
         type=int,
         default=0,
@@ -81,6 +89,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
         control_port=args.control_port,
         manifest_paths=tuple(args.manifest_paths),
         restart_patterns=tuple(args.restart_patterns),
+        external_hmr_patterns=tuple(args.external_hmr_patterns),
     )
 
     with Supervisor(config) as supervisor, contextlib.suppress(KeyboardInterrupt):

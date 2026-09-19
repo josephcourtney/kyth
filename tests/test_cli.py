@@ -25,6 +25,8 @@ def test_parser_accepts_target_host_port_watch_paths_and_control_port() -> None:
         "build/kyth-manifest.json",
         "--restart-on",
         "config/*.yaml",
+        "--external-hmr-on",
+        "frontend/*.js",
         "--control-port",
         "8765",
     ])
@@ -37,4 +39,5 @@ def test_parser_accepts_target_host_port_watch_paths_and_control_port() -> None:
     assert args.ignored_paths == [Path("generated")]
     assert args.manifest_paths == [Path("build/kyth-manifest.json")]
     assert args.restart_patterns == ["config/*.yaml"]
+    assert args.external_hmr_patterns == ["frontend/*.js"]
     assert args.control_port == 8765

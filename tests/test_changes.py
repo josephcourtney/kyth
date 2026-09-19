@@ -50,3 +50,22 @@ def test_configured_restart_pattern_classifies_runtime_configuration() -> None:
 def test_restart_policy_rejects_empty_pattern() -> None:
     with pytest.raises(ValueError, match="restart patterns must be non-empty"):
         ChangePolicy(restart_patterns=("",))
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_external_hmr_pattern_suppresses_kyth_browser_classification() -> None:
+    batch = FileBatch.from_events([
+        FileEvent(Path("/project/frontend/app.js"), FileOperation.MODIFIED),
+        FileEvent(Path("/project/static/site.css"), FileOperation.MODIFIED),
+    ])
+    policy = ChangePolicy(external_hmr_patterns=("frontend/*.js",))
+
+    result = classify_batch(batch, policy=policy)
+
+    effects = {item.path.name: item.effect for item in result.paths}
+    assert effects == {
+        "app.js": ChangeEffect.EXTERNAL_HMR,
+        "site.css": ChangeEffect.BROWSER_CHANGE,
+    }
+    assert result.external_hmr_paths == (Path("/project/frontend/app.js"),)

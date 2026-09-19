@@ -47,6 +47,7 @@ class SupervisorConfig:
     generation_update_timeout: float = 2.0
     manifest_paths: tuple[Path, ...] = ()
     restart_patterns: tuple[str, ...] = ()
+    external_hmr_patterns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +81,10 @@ class Supervisor:
         self._direct_resources = DirectResourceIndex(roots)
         self._render_provenance = RenderProvenanceIndex()
         self._generated = GeneratedManifestIndex(config.manifest_paths)
-        self._change_policy = ChangePolicy(config.restart_patterns)
+        self._change_policy = ChangePolicy(
+            restart_patterns=config.restart_patterns,
+            external_hmr_patterns=config.external_hmr_patterns,
+        )
         self._deduplicator = BatchDeduplicator()
         self._last_change_report: ChangeCycleReport | None = None
 
@@ -530,6 +534,8 @@ class Supervisor:
         actions = () if decision is None else decision.actions
         affected_view_ids = tuple(sorted(action.view_id for action in actions))
         reason = "no-action" if decision is None else decision.reason
+        if decision is None and changes.external_hmr_paths:
+            reason = "external-hmr"
         report = ChangeCycleReport(
             changed_paths=changes.batch.paths,
             classifications=changes.paths,
@@ -571,6 +577,9 @@ class Supervisor:
             return
         if relevant_paths:
             logger.info("%s changed -> browser invalidation", rendered)
+            return
+        if changes.external_hmr_paths and not changes.other_paths:
+            logger.info("%s changed -> external HMR owner; no Kyth browser action", rendered)
             return
         if stale_outputs:
             logger.info(
