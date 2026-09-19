@@ -26,6 +26,7 @@ CLIENT_JAVASCRIPT = (
   const MAX_REGISTERED_RESOURCES = 256;
   const CACHE_BUST_KEY = "__kyth_generation__";
   const RESOURCE_REGISTRATION_DELAY_MS = 50;
+  const VIEW_CLAIM_WAIT_MS = 30;
 
   let resourceSnapshotComplete =
     performance.getEntriesByType("resource").length < DEFAULT_RESOURCE_TIMING_CAPACITY;
@@ -167,6 +168,54 @@ CLIENT_JAVASCRIPT = (
   if (!viewId) {
     viewId = randomId();
     sessionSet(VIEW_KEY, viewId);
+  }
+  const viewInstanceId = randomId();
+  let viewClaimChannel = null;
+
+  async function claimViewIdentity() {
+    if (typeof BroadcastChannel !== "function") {
+      return;
+    }
+
+    try {
+      viewClaimChannel = new BroadcastChannel(`__kyth_view_claim__:${token}`);
+    } catch {
+      return;
+    }
+
+    let conflict = false;
+    viewClaimChannel.addEventListener("message", (event) => {
+      const message = event.data;
+      if (
+        message === null ||
+        typeof message !== "object" ||
+        message.viewId !== viewId ||
+        message.instanceId === viewInstanceId
+      ) {
+        return;
+      }
+      if (message.type === "probe") {
+        viewClaimChannel.postMessage({
+          type: "claimed",
+          viewId,
+          instanceId: viewInstanceId,
+        });
+      } else if (message.type === "claimed") {
+        conflict = true;
+      }
+    });
+
+    viewClaimChannel.postMessage({
+      type: "probe",
+      viewId,
+      instanceId: viewInstanceId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, VIEW_CLAIM_WAIT_MS));
+
+    if (conflict) {
+      viewId = randomId();
+      sessionSet(VIEW_KEY, viewId);
+    }
   }
 
   let registrationSequence = Number(sessionGet(REGISTRATION_SEQUENCE_KEY) || "0");
@@ -564,7 +613,7 @@ CLIENT_JAVASCRIPT = (
     performanceObserver.observe({type: "resource", buffered: false});
   }
 
-  registerView().finally(connectEvents);
+  void claimViewIdentity().then(() => registerView().finally(connectEvents));
   if (document.readyState === "loading") {
     addEventListener("DOMContentLoaded", restorePreservedState, {once: true});
   } else {
