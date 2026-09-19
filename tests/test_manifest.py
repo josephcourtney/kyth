@@ -1,4 +1,5 @@
 import json
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -103,7 +104,6 @@ def test_manifest_explicit_urls_map_active_views_to_generated_outputs(tmp_path: 
     }
 
 
-
 @pytest.mark.integration
 @pytest.mark.medium
 @pytest.mark.parametrize(
@@ -160,7 +160,7 @@ def test_manifest_rejects_semantically_invalid_outputs(
     if message == "generated URL is declared by multiple outputs":
         invalid_load = GeneratedManifestIndex((path,)).load_all
     else:
-        invalid_load = lambda: load_manifest(path)
+        invalid_load = partial(load_manifest, path)
 
     with pytest.raises(error_type, match=message):
         invalid_load()
