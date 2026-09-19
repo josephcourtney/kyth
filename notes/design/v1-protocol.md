@@ -28,6 +28,8 @@ Only `READY` may be advertised to browsers as an active application generation.
 
 A child transitions to `READY` only after the ASGI lifespan startup sequence has completed successfully. Process creation, successful module import, or an open listening socket alone are insufficient.
 
+Applications may register synchronous or asynchronous checks with `kyth.injection.register_readiness_check`. These checks run in the child only after ASGI lifespan startup succeeds. Every registered check must complete without exception and may not return `False`; otherwise startup is reported as failed, the failed generation is not committed, and the supervisor remains available for a later retry.
+
 ## 3. Listening socket ownership
 
 The supervisor creates, binds, and listens on the public application socket before starting the child.
@@ -204,7 +206,7 @@ The client performs a full reload when:
 
 Before invoking reload, the client records the generation so delivery/reconnection cannot cause an immediate reload loop.
 
-V1 may preserve scroll position and focus as a generic convenience, but it must not preserve arbitrary application state or form data unless the application explicitly opts in.
+Arbitrary application state is preserved only by explicit opt-in. Immediately before a full reload the client dispatches `kyth:before-reload` with `detail.generation` and `detail.preserve(value)`. If a handler calls `preserve`, Kyth JSON-serializes that value into tab-scoped session storage. The replacement document dispatches `kyth:restore-state` after deferred/module scripts have had an opportunity to register listeners, with `detail.generation` and the preserved `detail.state`. Missing handlers, unserializable values, or restore failures leave normal full-reload behavior unchanged.
 
 ## 13. CSS update behavior
 
@@ -245,7 +247,7 @@ If relevant plain/generated JavaScript changes and no external HMR owner is conf
 
 Kyth does not track JavaScript module acceptance boundaries, dispose hooks, component state, or module dependency propagation.
 
-When an external frontend development server owns HMR, Kyth should avoid issuing redundant reloads for changes demonstrably handled by that owner.
+When an external frontend development server owns HMR, repeated `--external-hmr-on PATTERN` options classify matching browser-facing paths as externally owned. Kyth continues to observe and diagnose those paths but emits no redundant browser action for them. Restart-worthy Python or process-configuration semantics still take precedence.
 
 ## 16. HTML injection
 
@@ -261,11 +263,12 @@ For an injected response Kyth:
 - embeds the control URL, session token, committed/candidate generation, and an opaque render identifier as script data attributes;
 - recalculates `Content-Length`;
 - removes content-derived cache validators such as ETag/digest and Last-Modified;
+- replaces application cache metadata such as `Cache-Control` and `Expires` with development `Cache-Control: no-store` semantics so a full reload cannot be masked by an immutable same-origin response;
 - augments an existing CSP narrowly enough to permit the nonce-bearing Kyth script and the exact loopback control origin for script/connect traffic.
 
 The browser client creates a tab-scoped opaque `view_id`, registers `view_id`, current URL, generation, and render ID with `POST /views`, then opens `GET /events`.
 
-A live `sync` event does not itself reload an already connected page because a more specific event for that generation may immediately follow. On initial connection or SSE reconnection, however, `sync` is compared with the page generation and triggers conservative reload if the page is stale.
+A live `sync` event does not itself reload an already connected page because a more specific event for that generation may immediately follow. On initial connection or SSE reconnection, however, `sync` is compared with the page generation and triggers conservative reload if the page is stale. When the browser reports that it is offline, the client closes the active EventSource immediately; connectivity restoration therefore begins from a fresh `sync` rather than applying narrow events that may have been buffered on the old connection.
 
 A `reload` event reloads only when its generation is newer than the document generation. Before navigation, the client stores the target generation in tab-scoped session storage so duplicate delivery or reconnection cannot create a reload loop.
 
@@ -347,13 +350,17 @@ Then:
 
 This interface is independent of Jinja; later adapters can emit the same render record without changing supervisor invalidation policy.
 
+Application code may also call `kyth.injection.depend_on(path)` during an active injectable render. The path is versioned and added to the same render record as automatic template dependencies, so explicit integration does not create a parallel invalidation mechanism. The call returns `False` outside an active Kyth-managed render, keeping the integration optional for application correctness.
+
 ## 19. Browser-consumed data
 
-A tracked data resource may emit `data-update` for affected views.
+Application code may call `kyth.injection.depend_on_data(identity, path)` during an active injectable render. Kyth records the path with normal source-version metadata plus the semantic data identity.
 
-If the page has registered an explicit handler for the data identity, that handler may refresh the application state without navigation. Otherwise the generic behavior is full reload.
+When such a source becomes stale, affected views receive a targeted `data-update` event instead of an immediate document reload unless the same change also requires a stronger action. The injected client converts this to a `kyth:data-update` browser event. Its detail contains the semantic `identity`, the committed `generation`, and a `handle(value)` method.
 
-Kyth does not infer semantic data-to-widget update logic.
+A page handler claims the update by calling `event.detail.handle(...)`; the supplied value may be a promise. Kyth waits for all claimed work before advancing the browser generation and re-registering the view. If any identity is unclaimed, claimed work rejects, or the update is otherwise invalid, the client falls back to a full reload. Kyth does not infer semantic data-to-widget update logic.
+
+Failed child startup emits a structured `server-error` control event at the last committed generation. The injected client exposes this as `kyth:server-error` with `detail.generation` and `detail.message`; receiving the diagnostic does not navigate the page.
 
 ## 20. Security boundary
 
@@ -379,7 +386,7 @@ or:
 
 `src/app.py changed -> restart -> child ready -> generation 18 -> 2 views reloaded`
 
-Verbose diagnostics may include dependency edges, source versions, raw watcher operations, child exit status, and per-view reasoning.
+The supervisor retains a structured change-cycle report for the most recent processed batch, including changed paths, classifications, restart request/result, invalidated generated outputs, affected views, browser actions, reason, and resulting generation. Normal logging remains compact; `--verbose` emits the full decision chain.
 
 ## 22. V1 acceptance behavior
 

@@ -139,11 +139,21 @@ Sequence hardening work as follows:
 
 Do not optimize test-category percentages by relabeling genuinely I/O-bound tests. Improve the boundary between pure policy and I/O mechanisms instead.
 
-## Phase 9: optional application hooks — deferred
+## Phase 9: narrow optional application integrations
 
-Do not implement a general hook framework without a concrete use case that cannot be represented by direct provenance, render records, browser-resource observation, or generated dependency manifests.
+The remaining V1 integration points are implemented without introducing a general hook framework.
 
-If such a use case appears, add the smallest typed extension necessary and preserve the zero-touch fallback. Candidate capabilities remain explicit custom dependency registration, custom readiness, semantic browser data updates, state preservation, or coordination with an external frontend HMR owner.
+Delivered:
+
+- `depend_on(path)` for explicit request-scoped filesystem dependencies using the same source-version model as automatic render provenance;
+- `depend_on_data(identity, path)` for semantic browser-consumed data dependencies;
+- targeted `data-update` events whose browser handlers explicitly claim an identity and fall back to full reload when absent or unsuccessful;
+- `register_readiness_check` for synchronous or asynchronous application-specific readiness after successful ASGI lifespan startup;
+- opt-in `kyth:before-reload` / `kyth:restore-state` browser state preservation using tab-scoped JSON serialization;
+- non-navigating `kyth:server-error` diagnostics for failed replacement startup;
+- repeated `--external-hmr-on PATTERN` configuration so selected browser changes can remain owned by a dedicated frontend development server.
+
+These are deliberately small typed/configured extensions. Do not replace them with a plugin framework unless a concrete second implementation requires a capability that cannot be expressed through the existing provenance, control-event, readiness, or classification mechanisms.
 
 ## Cross-cutting implementation constraints
 
