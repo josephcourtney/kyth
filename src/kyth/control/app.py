@@ -485,9 +485,7 @@ def _data_dependencies(payload: dict[str, object]) -> tuple[DataDependency, ...]
         raise ValueError(msg)
 
     dependencies = {_data_dependency(item) for item in value}
-    return tuple(
-        sorted(dependencies, key=lambda item: (item.identity, item.source.path))
-    )
+    return tuple(sorted(dependencies, key=lambda item: (item.identity, item.source.path)))
 
 
 def _data_dependency(value: object) -> DataDependency:

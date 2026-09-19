@@ -41,10 +41,7 @@ class RenderProvenanceIndex:
     @property
     def data_source_views(self) -> dict[Path, dict[str, tuple[str, ...]]]:
         return {
-            path: {
-                view_id: tuple(sorted(identities))
-                for view_id, identities in views.items()
-            }
+            path: {view_id: tuple(sorted(identities)) for view_id, identities in views.items()}
             for path, views in self._data_source_views.items()
         }
 
@@ -94,9 +91,7 @@ class RenderProvenanceIndex:
                 source_view_versions.setdefault(path, {})[view_id] = dependency
             for dependency in record.data_dependencies:
                 path = _normalize_path(dependency.source.path)
-                data_source_views.setdefault(path, {}).setdefault(view_id, set()).add(
-                    dependency.identity
-                )
+                data_source_views.setdefault(path, {}).setdefault(view_id, set()).add(dependency.identity)
                 data_source_view_versions.setdefault(path, {})[view_id] = dependency.source
 
         self._source_views = source_views

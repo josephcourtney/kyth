@@ -59,10 +59,7 @@ def _print_complexity(blocks: Sequence[ComplexityBlock]) -> None:
         return
 
     for block in blocks:
-        print(
-            f"{block.path}:{block.line}: "
-            f"{block.rank} ({block.complexity}) {block.name}"
-        )
+        print(f"{block.path}:{block.line}: {block.rank} ({block.complexity}) {block.name}")
 
     print()
     print(f"Average complexity: {mean(block.complexity for block in blocks):.2f}")
@@ -74,18 +71,12 @@ def _run_report(paths: Sequence[Path]) -> int:
 
 
 def _run_strict(paths: Sequence[Path], threshold: int) -> int:
-    offenders = tuple(
-        block
-        for block in _all_blocks(paths)
-        if block.complexity >= threshold
-    )
+    offenders = tuple(block for block in _all_blocks(paths) if block.complexity >= threshold)
     if not offenders:
         print(f"[complexity] all blocks are below {threshold}")
         return 0
 
-    print(
-        f"[complexity] {len(offenders)} block(s) have complexity >= {threshold}:"
-    )
+    print(f"[complexity] {len(offenders)} block(s) have complexity >= {threshold}:")
     _print_complexity(offenders)
     return 1
 
@@ -130,10 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     missing = tuple(root for root in roots if not root.exists())
     if missing:
-        parser.error(
-            "path does not exist: "
-            + ", ".join(path.as_posix() for path in missing)
-        )
+        parser.error("path does not exist: " + ", ".join(path.as_posix() for path in missing))
 
     files = _python_files(roots)
     if not files:

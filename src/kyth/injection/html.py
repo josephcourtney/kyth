@@ -18,11 +18,7 @@ DEVELOPMENT_CACHE_HEADERS = CACHE_VALIDATOR_HEADERS | {b"cache-control", b"expir
 
 def rewrite_cache_headers(headers: Iterable[tuple[bytes, bytes]]) -> list[tuple[bytes, bytes]]:
     """Prevent development responses from being hidden behind browser caches."""
-    rewritten = [
-        (name, value)
-        for name, value in headers
-        if name.lower() not in DEVELOPMENT_CACHE_HEADERS
-    ]
+    rewritten = [(name, value) for name, value in headers if name.lower() not in DEVELOPMENT_CACHE_HEADERS]
     rewritten.append((b"cache-control", b"no-store"))
     return rewritten
 

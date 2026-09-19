@@ -348,10 +348,7 @@ class Supervisor:
         output_views = self._generated.output_views({view.view_id: view.url for view in views if view.url})
         stale_outputs = self._generated.stale_outputs
         deferred = {
-            view_id
-            for output, view_ids in output_views.items()
-            if output in stale_outputs
-            for view_id in view_ids
+            view_id for output, view_ids in output_views.items() if output in stale_outputs for view_id in view_ids
         }
         return tuple(sorted(deferred))
 
@@ -462,9 +459,7 @@ class Supervisor:
         generated_output_views: dict[Path, tuple[str, ...]],
     ) -> dict[Path, tuple[str, ...]]:
         return {
-            source: tuple(
-                sorted({view_id for output in outputs for view_id in generated_output_views.get(output, ())})
-            )
+            source: tuple(sorted({view_id for output in outputs for view_id in generated_output_views.get(output, ())}))
             for source, outputs in self._generated.source_outputs.items()
         }
 

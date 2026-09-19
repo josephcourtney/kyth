@@ -50,4 +50,3 @@ class ControlEvent:
     @classmethod
     def server_error(cls, generation: int, *, message: str) -> ControlEvent:
         return cls(ControlEventKind.SERVER_ERROR, generation, {"message": message})
-
