@@ -276,10 +276,7 @@ class ViewRegistryStateMachine(RuleBasedStateMachine):
 
     @invariant()
     def implementation_matches_reference_model(self) -> None:
-        actual = {
-            view.view_id: (view.generation, view.url)
-            for view in self.registry.snapshot()
-        }
+        actual = {view.view_id: (view.generation, view.url) for view in self.registry.snapshot()}
         assert actual == self.expected
 
 
@@ -330,7 +327,4 @@ def test_mixed_browser_actions_account_for_every_view_and_reload_dominates(
     assert set(actions) | set(decision.current_view_ids) == active
     assert set(actions).isdisjoint(decision.current_view_ids)
     assert all(actions[view_id] is BrowserActionKind.RELOAD for view_id in reload_views)
-    assert all(
-        actions[view_id] is BrowserActionKind.CSS_UPDATE
-        for view_id in css_views - reload_views
-    )
+    assert all(actions[view_id] is BrowserActionKind.CSS_UPDATE for view_id in css_views - reload_views)
