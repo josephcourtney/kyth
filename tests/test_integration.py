@@ -92,7 +92,9 @@ async def test_registered_readiness_checks_support_sync_and_async(monkeypatch: p
 
     @register_readiness_check
     async def async_check() -> None:
-        await asyncio.sleep(0)
+        ready = asyncio.Event()
+        ready.set()
+        await ready.wait()
         calls.append("async")
 
     await integration.run_readiness_checks()

@@ -43,7 +43,7 @@ def test_restart_cycle_coalesces_pending_restart_changes() -> None:
         None,
     ])
 
-    with patch.object(supervisor, "restart_child", return_value=True) as restart:
+    with patch.object(supervisor, "_restart_for_change_cycle", return_value=None) as restart:
         supervisor._handle_change_cycle(_batch("/project/first.py"), source)
 
     assert restart.call_count == 2
@@ -55,7 +55,7 @@ def test_browser_only_pending_changes_do_not_trigger_followup_restart() -> None:
     supervisor = Supervisor(SupervisorConfig("example:app"))
     source = _PendingBatches([_batch("/project/site.css")])
 
-    with patch.object(supervisor, "restart_child", return_value=True) as restart:
+    with patch.object(supervisor, "_restart_for_change_cycle", return_value=None) as restart:
         supervisor._handle_change_cycle(_batch("/project/app.py"), source)
 
     assert restart.call_count == 1
