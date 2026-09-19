@@ -24,39 +24,47 @@ class RenderTrace:
     render_id: str
     generation: int
     dependencies: dict[str, SourceVersion] = field(default_factory=dict)
+    adapters: set[str] = field(default_factory=set)
     complete: bool = True
     used: bool = False
 
     def record_template(self, template: object) -> None:
         """Record one concrete template object used by the current render."""
         self.used = True
+        self.adapters.add("jinja")
         try:
-            filename = object.__getattribute__(template, "filename")  # ruff: ignore[unnecessary-dunder-call] # necessary for a dataclass after initialization
+            filename = object.__getattribute__(template, "filename")  # ruff: ignore[unnecessary-dunder-call]
         except AttributeError:
             self.complete = False
             return
         if not isinstance(filename, str) or not filename or filename.startswith("<"):
             self.complete = False
             return
+        self.record_path(filename, adapter="jinja")
 
-        path = Path(filename).expanduser().resolve(strict=False)
+    def record_path(self, path: str | Path, *, adapter: str) -> None:
+        """Record one explicit filesystem dependency using the normal source-version model."""
+        self.used = True
+        self.adapters.add(adapter)
+        resolved = Path(path).expanduser().resolve(strict=False)
         try:
-            stat = path.stat()
+            stat = resolved.stat()
         except OSError:
             self.complete = False
-            version = SourceVersion(str(path), None, None)
+            version = SourceVersion(str(resolved), None, None)
         else:
-            version = SourceVersion(str(path), stat.st_mtime_ns, stat.st_size)
-        self.dependencies[str(path)] = version
+            version = SourceVersion(str(resolved), stat.st_mtime_ns, stat.st_size)
+        self.dependencies[str(resolved)] = version
 
     def to_record(self) -> RenderRecord:
         """Freeze this request trace into the adapter-neutral provenance model."""
+        adapter = "+".join(sorted(self.adapters)) or "unknown"
         return RenderRecord(
             render_id=self.render_id,
             generation=self.generation,
             dependencies=tuple(sorted(self.dependencies.values(), key=lambda item: item.path)),
             complete=self.complete,
-            adapter="jinja",
+            adapter=adapter,
         )
 
 
@@ -72,6 +80,15 @@ def capture_render(render_id: str, generation: int) -> Iterator[RenderTrace]:
         yield trace
     finally:
         _CURRENT_TRACE.reset(token)
+
+
+def record_dependency(path: str | Path) -> bool:
+    """Attach one explicit source dependency to the active request render, if any."""
+    trace = _CURRENT_TRACE.get()
+    if trace is None:
+        return False
+    trace.record_path(path, adapter="explicit")
+    return True
 
 
 def install_jinja_tracing() -> bool:
