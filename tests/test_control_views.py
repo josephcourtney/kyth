@@ -1,6 +1,7 @@
 import pytest
 
 from kyth.control.views import ViewRegistry
+from kyth.model import BrowserResource, BrowserResourceKind
 
 
 @pytest.mark.unit
@@ -54,3 +55,44 @@ def test_set_generation_marks_only_selected_views_current() -> None:
     assert second is not None
     assert first.generation == 2
     assert second.generation == 1
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_stale_registration_cannot_overwrite_newer_view_state() -> None:
+    now = [1.0]
+    registry = ViewRegistry(inactivity_timeout=5.0, clock=lambda: now[0])
+    current_resource = BrowserResource(
+        "http://127.0.0.1/current.css",
+        BrowserResourceKind.STYLESHEET,
+    )
+    stale_resource = BrowserResource(
+        "http://127.0.0.1/stale.css",
+        BrowserResourceKind.STYLESHEET,
+    )
+    registry.register(
+        view_id="view",
+        url="http://127.0.0.1/current",
+        generation=4,
+        render_id="render-current",
+        resources=(current_resource,),
+        resources_complete=True,
+    )
+
+    now[0] = 2.0
+    returned = registry.register(
+        view_id="view",
+        url="http://127.0.0.1/stale",
+        generation=3,
+        render_id="render-stale",
+        resources=(stale_resource,),
+        resources_complete=False,
+    )
+
+    assert returned.generation == 4
+    assert returned.url == "http://127.0.0.1/current"
+    assert returned.render_id == "render-current"
+    assert returned.resources == (current_resource,)
+    assert returned.resources_complete is True
+    assert returned.last_seen == 2.0
+    assert registry.get("view") == returned
