@@ -225,7 +225,7 @@ async def test_noninjectable_response_shapes_pass_through(
 async def test_non_html_response_disables_development_caching() -> None:
     sent: list[ASGIMessage] = []
 
-    async def capture(message: ASGIMessage) -> None:
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send is async by contract
         sent.append(message)
 
     async def app(_scope, _receive, send) -> None:

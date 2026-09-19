@@ -27,8 +27,8 @@ def test_depend_on_adds_explicit_dependency_to_render_record(tmp_path: Path) -> 
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_depend_on_is_safe_outside_active_render() -> None:
-    assert not depend_on("/tmp/not-an-active-render")
+def test_depend_on_is_safe_outside_active_render(tmp_path: Path) -> None:
+    assert not depend_on(tmp_path / "not-an-active-render")
 
 
 @pytest.mark.integration
@@ -71,9 +71,9 @@ def test_depend_on_data_records_semantic_dependency(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_depend_on_data_rejects_empty_identity() -> None:
+def test_depend_on_data_rejects_empty_identity(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="identity must be non-empty"):
-        depend_on_data("", "/tmp/data.json")
+        depend_on_data("", tmp_path / "data.json")
 
 
 @pytest.mark.unit

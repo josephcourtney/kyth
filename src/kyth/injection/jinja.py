@@ -59,7 +59,7 @@ class RenderTrace:
         version, complete = _source_version(path)
         if not complete:
             self.complete = False
-        self.data_dependencies[(identity, version.path)] = DataDependency(identity, version)
+        self.data_dependencies[identity, version.path] = DataDependency(identity, version)
 
     def to_record(self) -> RenderRecord:
         """Freeze this request trace into the adapter-neutral provenance model."""

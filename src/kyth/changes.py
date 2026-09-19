@@ -42,6 +42,7 @@ class ChangePolicy:
     external_hmr_patterns: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        """Validate configured path patterns."""
         if any(not pattern.strip() for pattern in self.restart_patterns):
             msg = "restart patterns must be non-empty"
             raise ValueError(msg)

@@ -41,7 +41,7 @@ class _ReadinessServer(uvicorn.Server):
             return
         try:
             await run_readiness_checks()
-        except Exception as exc:  # noqa: BLE001 - application checks are a startup boundary
+        except Exception as exc:  # ruff: ignore[blind-except] - application checks are a startup boundary
             self.should_exit = True
             self._report(StartupEvent.failed(f"custom readiness check failed: {exc}"))
             return

@@ -157,12 +157,13 @@ def test_manifest_rejects_semantically_invalid_outputs(
     path = tmp_path / "invalid.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
 
+    if message == "generated URL is declared by multiple outputs":
+        invalid_load = GeneratedManifestIndex((path,)).load_all
+    else:
+        invalid_load = lambda: load_manifest(path)
+
     with pytest.raises(error_type, match=message):
-        if message == "generated URL is declared by multiple outputs":
-            index = GeneratedManifestIndex((path,))
-            index.load_all()
-        else:
-            load_manifest(path)
+        invalid_load()
 
 
 @pytest.mark.integration

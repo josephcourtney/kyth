@@ -185,5 +185,5 @@ def _observe_path(path: Path) -> ObservedPathState:
     try:
         stat = path.stat()
     except OSError:
-        return ObservedPathState(False)
-    return ObservedPathState(True, stat.st_mtime_ns, stat.st_size)
+        return ObservedPathState(exists=False)
+    return ObservedPathState(exists=True, mtime_ns=stat.st_mtime_ns, size=stat.st_size)

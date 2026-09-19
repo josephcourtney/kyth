@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable
-from pathlib import Path
-from typing import TypeVar
+from typing import TYPE_CHECKING
 
 from kyth.injection.jinja import record_data_dependency, record_dependency
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 _ReadinessResult = bool | None | Awaitable[bool | None]
 _ReadinessCheck = Callable[[], _ReadinessResult]
-_CheckT = TypeVar("_CheckT", bound=_ReadinessCheck)
 _READINESS_CHECKS: list[_ReadinessCheck] = []
 
 
@@ -30,7 +31,7 @@ def depend_on_data(identity: str, path: str | Path) -> bool:
     return record_data_dependency(identity, path)
 
 
-def register_readiness_check(check: _CheckT) -> _CheckT:
+def register_readiness_check[CheckT: _ReadinessCheck](check: CheckT) -> CheckT:
     """Register a child-local check that must complete after ASGI lifespan startup."""
     _READINESS_CHECKS.append(check)
     return check
