@@ -342,10 +342,19 @@ def test_failed_replacement_startup_does_not_reload_until_ready(
 ) -> None:
     harness = resource_harness
     _set_sentinel(harness.page, "keep")
+    harness.page.evaluate(
+        """() => addEventListener("kyth:server-error", (event) => {
+            window.__kythServerError = event.detail.message;
+        })"""
+    )
     generation = harness.supervisor.state.generation
     monkeypatch.setenv("KYTH_BROWSER_FAIL_STARTUP", "1")
 
     assert not harness.supervisor.restart_child()
+    harness.page.wait_for_function(
+        "() => window.__kythServerError?.includes('browser fixture startup failure')",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
     assert harness.supervisor.state.generation == generation
     time.sleep(0.5)
     assert _sentinel(harness.page) == "keep"

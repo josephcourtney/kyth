@@ -120,6 +120,36 @@ def _write_startup_failed_app(path: Path) -> None:
     )
 
 
+def _write_readiness_app(path: Path, marker: Path) -> None:
+    path.write_text(
+        f"""from http import HTTPStatus
+from pathlib import Path
+
+from kyth.injection import register_readiness_check
+
+
+@register_readiness_check
+def application_ready():
+    return Path({str(marker)!r}).exists()
+
+
+async def app(scope, receive, send):
+    if scope["type"] == "lifespan":
+        while True:
+            message = await receive()
+            if message["type"] == "lifespan.startup":
+                await send({{"type": "lifespan.startup.complete"}})
+            elif message["type"] == "lifespan.shutdown":
+                await send({{"type": "lifespan.shutdown.complete"}})
+                return
+    elif scope["type"] == "http":
+        await send({{"type": "http.response.start", "status": HTTPStatus.OK, "headers": []}})
+        await send({{"type": "http.response.body", "body": b"ready"}})
+""",
+        encoding="utf-8",
+    )
+
+
 def _write_crashing_app(path: Path) -> None:
     path.write_text(
         """import os
@@ -621,6 +651,34 @@ def test_app_without_lifespan_support_still_becomes_ready(tmp_path: Path) -> Non
             assert supervisor.state.child.status is ChildStatus.READY
             assert supervisor.state.generation == 1
             assert _request(supervisor.address) == "http-only"
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_custom_readiness_failure_is_recoverable_on_next_restart(tmp_path: Path) -> None:
+    module = tmp_path / "custom_readiness_app.py"
+    marker = tmp_path / "application-ready"
+    _write_readiness_app(module, marker)
+    sys.path.insert(0, str(tmp_path))
+    try:
+        config = SupervisorConfig(
+            "custom_readiness_app:app",
+            port=0,
+            startup_timeout=5.0,
+            shutdown_timeout=1.0,
+        )
+        with Supervisor(config) as supervisor:
+            assert not supervisor.start_child()
+            assert supervisor.state.child.status is ChildStatus.FAILED
+            assert supervisor.state.generation == 0
+
+            marker.write_text("ready", encoding="utf-8")
+            assert supervisor.restart_child()
+            assert supervisor.state.child.status is ChildStatus.READY
+            assert supervisor.state.generation == 1
+            assert _request(supervisor.address) == "ready"
     finally:
         sys.path.remove(str(tmp_path))
 
