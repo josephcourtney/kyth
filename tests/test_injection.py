@@ -33,6 +33,8 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
                 (b"content-type", b"text/html; charset=utf-8"),
                 (b"content-length", b"31"),
                 (b"etag", b'"abc"'),
+                (b"cache-control", b"public, max-age=31536000, immutable"),
+                (b"expires", b"Wed, 21 Oct 2037 07:28:00 GMT"),
                 (b"content-security-policy", b"default-src 'self'"),
             ],
         })
@@ -73,6 +75,8 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
 
     headers = dict(start["headers"])
     assert b"etag" not in headers
+    assert b"expires" not in headers
+    assert headers[b"cache-control"] == b"no-store"
     assert int(headers[b"content-length"]) == len(body)
     policy = headers[b"content-security-policy"].decode()
     assert "script-src 'self' 'nonce-" in policy
@@ -213,3 +217,40 @@ async def test_noninjectable_response_shapes_pass_through(
 
     assert sent[1]["body"] == body
     assert b"client.js" not in sent[1]["body"]
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_non_html_response_disables_development_caching() -> None:
+    sent: list[ASGIMessage] = []
+
+    async def capture(message: ASGIMessage) -> None:
+        sent.append(message)
+
+    async def app(_scope, _receive, send) -> None:
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [
+                (b"content-type", b"text/javascript"),
+                (b"cache-control", b"public, max-age=31536000, immutable"),
+                (b"etag", b'"script-v1"'),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"window.VERSION = 1;",
+            "more_body": False,
+        })
+
+    middleware = HTMLInjectionMiddleware(
+        app,
+        InjectionConfig("http://127.0.0.1:9001", "token", 1),
+    )
+    await middleware({"type": "http", "method": "GET", "headers": []}, _receive, capture)
+
+    headers = dict(sent[0]["headers"])
+    assert headers[b"cache-control"] == b"no-store"
+    assert b"etag" not in headers
+    assert sent[1]["body"] == b"window.VERSION = 1;"

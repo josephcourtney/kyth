@@ -7,7 +7,7 @@ from http import HTTPStatus
 from threading import Lock
 from typing import Any
 
-from kyth.injection.html import browser_script, inject_script, rewrite_headers
+from kyth.injection.html import browser_script, inject_script, rewrite_cache_headers, rewrite_headers
 from kyth.injection.jinja import capture_render, install_jinja_tracing
 from kyth.injection.reporting import report_render_record
 
@@ -141,8 +141,12 @@ class _ResponseInjector:
 
     async def _flush_start(self) -> None:
         if self._start is not None:
-            await self._send(self._start)
+            start = {
+                **self._start,
+                "headers": rewrite_cache_headers(_headers(self._start)),
+            }
             self._start = None
+            await self._send(start)
 
     def _injectable(self) -> bool:
         if self._method == "HEAD" or self._start is None:

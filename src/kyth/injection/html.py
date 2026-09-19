@@ -13,6 +13,18 @@ CACHE_VALIDATOR_HEADERS = frozenset({
     b"etag",
     b"last-modified",
 })
+DEVELOPMENT_CACHE_HEADERS = CACHE_VALIDATOR_HEADERS | {b"cache-control", b"expires"}
+
+
+def rewrite_cache_headers(headers: Iterable[tuple[bytes, bytes]]) -> list[tuple[bytes, bytes]]:
+    """Prevent development responses from being hidden behind browser caches."""
+    rewritten = [
+        (name, value)
+        for name, value in headers
+        if name.lower() not in DEVELOPMENT_CACHE_HEADERS
+    ]
+    rewritten.append((b"cache-control", b"no-store"))
+    return rewritten
 
 
 def browser_script(
@@ -58,10 +70,8 @@ def rewrite_headers(
     rewritten: list[tuple[bytes, bytes]] = []
     saw_content_length = False
 
-    for name, value in headers:
+    for name, value in rewrite_cache_headers(headers):
         lowered = name.lower()
-        if lowered in CACHE_VALIDATOR_HEADERS:
-            continue
         if lowered == b"content-length":
             rewritten.append((name, str(body_length).encode()))
             saw_content_length = True
