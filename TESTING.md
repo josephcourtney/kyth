@@ -22,7 +22,7 @@ Hypothesis properties run in the default suite and are marked `property_based` p
 - exhaustive/disjoint change classification;
 - conservative fallback for unknown dependencies;
 - complete accounting of affected/current views;
-- monotonic view generations;
+- monotonic view generations and registration-sequence ordering;
 - SSE serialization;
 - direct URL/path traversal safety.
 
@@ -86,7 +86,7 @@ Every browser acceptance test is parameterized over Chromium and Firefox. The cu
 - image/SVG cache busting without document navigation;
 - JavaScript/font/observed-resource fallback to full reload;
 - failed CSS/image narrow update fallback;
-- distinct-tab targeting;
+- distinct-tab targeting and duplicated-tab identity rekeying;
 - duplicate stylesheet references;
 - preservation of pre-existing resource query parameters;
 - unsafe `srcset`/`picture` image fallback;
@@ -97,10 +97,11 @@ Every browser acceptance test is parameterized over Chromium and Firefox. The cu
 - CSP-compatible injection/control connection;
 - HTML fragments without closing tags;
 - offline/missed SSE event recovery through reconnect synchronization;
+- control-stream establishment before initial browser registration, preventing registration-before-SSE missed-event races;
 - duplicate reload events for the current generation being ignored;
 - streaming/compressed/ranged/non-HTML pass-through behavior;
 - real Jinja include/base-template invalidation;
-- generated source changes waiting for regenerated output before navigation.
+- generated source changes waiting for regenerated output before navigation, including transient deletion and sibling-output partial rebuilds.
 
 Browser acceptance tests observable user behavior. Internal broker/event decisions belong in the Python suite.
 
@@ -122,8 +123,18 @@ Coverage is diagnostic rather than a target by itself. Prefer important failure 
 
 ## Mutation testing
 
-Mutation testing is deliberately deferred until property-based and browser-acceptance layers are stable. Start later with pure modules such as change classification, invalidation, provenance, and protocol encoding rather than subprocess/browser code.
+The first deliberately narrow mutation slice covers `src/kyth/changes.py` and `src/kyth/protocol.py`. Run it with:
+
+```console
+just mutation
+```
+
+Mutation execution uses plain pytest assertions and disables bytecode writes so the property-test layer retains its small-test filesystem isolation. The initial slice generated 103 mutants: 85 were killed and 18 were skipped, with no surviving, timeout, or suspicious mutants reported.
+
+Mutation testing is diagnostic rather than a release score gate. Expand the slice to another pure policy/provenance module only when survivors are likely to reveal a meaningful assertion gap; do not mutate subprocess or browser mechanisms merely to increase a headline score.
 
 ## Platform matrix
 
-Cross-platform/socket-transfer matrix testing is later hardening work and does not block the current test-architecture cleanup.
+Lifecycle hardening has been rehearsed on macOS and Linux across Python 3.12, 3.13, and 3.14. The matrix covers watcher behavior, child/process management, socket ownership/transfer, startup failure/recovery, and lifecycle behavior.
+
+Re-run that matrix when lifecycle/socket/watcher mechanisms change. Do not broaden it to unsupported environments solely for nominal portability.
