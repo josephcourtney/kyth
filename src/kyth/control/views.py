@@ -57,10 +57,7 @@ class ViewRegistry:
             current = self._views.get(view_id)
             if current is not None and (
                 generation < current.generation
-                or (
-                    generation == current.generation
-                    and registration_sequence < current.registration_sequence
-                )
+                or (generation == current.generation and registration_sequence < current.registration_sequence)
             ):
                 current = replace(current, last_seen=now)
                 self._views[view_id] = current
