@@ -528,11 +528,16 @@ CLIENT_JAVASCRIPT = (
     });
   }
 
-  function reconnectEvents() {
+  function disconnectEvents() {
+    awaitingSync = true;
     if (eventSource !== null) {
       eventSource.close();
       eventSource = null;
     }
+  }
+
+  function reconnectEvents() {
+    disconnectEvents();
     connectEvents();
   }
 
@@ -555,6 +560,7 @@ CLIENT_JAVASCRIPT = (
   } else {
     queueMicrotask(restorePreservedState);
   }
+  addEventListener("offline", disconnectEvents);
   addEventListener("online", reconnectEvents);
   addEventListener("load", scheduleRegistration, {once: true});
   addEventListener("pageshow", scheduleRegistration);

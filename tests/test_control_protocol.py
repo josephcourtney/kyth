@@ -175,6 +175,7 @@ def test_control_service_serves_token_gated_browser_client() -> None:
         assert '"kyth:server-error"' in body
         assert '"kyth:before-reload"' in body
         assert '"kyth:restore-state"' in body
+        assert 'addEventListener("offline", disconnectEvents)' in body
         assert 'addEventListener("online", reconnectEvents)' in body
         assert "eventSource.close()" in body
         assert "resources_complete" in body
