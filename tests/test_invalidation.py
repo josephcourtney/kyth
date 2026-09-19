@@ -277,8 +277,8 @@ def test_manifest_generated_views_are_deferred_for_shared_render_source() -> Non
         known_outputs=(),
         output_views={},
         known_render_sources={template},
-        render_source_views={template: ("dynamic",)},
-        complete_render_view_ids={"dynamic"},
+        render_source_views={template: ("dynamic", "generated")},
+        complete_render_view_ids={"dynamic", "generated"},
         deferred_source_views={template: ("generated",)},
         known_resources=(),
         resource_views={},
@@ -339,3 +339,34 @@ def test_mixed_template_and_data_dependency_falls_back_to_reload() -> None:
     assert [(action.view_id, action.kind) for action in decision.actions] == [
         ("view", BrowserActionKind.RELOAD),
     ]
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_manifest_deferred_view_suppresses_semantic_data_update_until_output_ready() -> None:
+    source = Path("/project/content.json")
+    decision = decide_browser_updates(
+        (source,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids={"dynamic", "generated"},
+        deferred_source_views={source: ("generated",)},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"dynamic", "generated"},
+        known_data_sources={source},
+        data_source_views={
+            source: {
+                "dynamic": ("content",),
+                "generated": ("content",),
+            }
+        },
+    )
+
+    assert [(action.view_id, action.kind) for action in decision.actions] == [
+        ("dynamic", BrowserActionKind.DATA_UPDATE),
+    ]
+    assert decision.current_view_ids == ("generated",)

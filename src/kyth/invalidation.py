@@ -212,16 +212,18 @@ def _merge_content_actions(
     for path in paths:
         precise: set[str] = set()
         affected: set[str] = set()
+        source_affected: set[str] = set()
+        deferred = set(deferred_source_views.get(path, ())) & active
         if path in known_output_paths:
             precise.update(direct_views)
             affected.update(output_views.get(path, ()))
         if path in known_render_paths:
             precise.update(complete_render_views)
-            affected.update(render_source_views.get(path, ()))
+            source_affected.update(render_source_views.get(path, ()))
         if path in known_data_paths:
             precise.update(complete_render_views)
             for view_id, identities in data_source_views.get(path, {}).items():
-                if view_id in active:
+                if view_id in active and view_id not in deferred:
                     _merge_action(
                         actions,
                         BrowserAction(
@@ -230,7 +232,8 @@ def _merge_content_actions(
                             data_ids=tuple(sorted(set(identities))),
                         ),
                     )
-        precise.update(deferred_source_views.get(path, ()))
+        precise.update(deferred)
+        affected.update(source_affected - deferred)
 
         for view_id in (affected & active) | (active - precise):
             _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))

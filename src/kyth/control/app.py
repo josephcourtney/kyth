@@ -475,7 +475,6 @@ def _render_record(payload: dict[str, object]) -> RenderRecord:
     )
 
 
-
 def _data_dependencies(payload: dict[str, object]) -> tuple[DataDependency, ...]:
     value = payload.get("data_dependencies", [])
     if not isinstance(value, list):
@@ -499,6 +498,7 @@ def _data_dependency(value: object) -> DataDependency:
     identity = _required_string(item, "identity")
     source = _source_version(item)
     return DataDependency(identity, source)
+
 
 def _source_versions(payload: dict[str, object]) -> tuple[SourceVersion, ...]:
     value = payload.get("dependencies")
