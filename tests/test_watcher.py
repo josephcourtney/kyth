@@ -1,3 +1,4 @@
+import os
 from __future__ import annotations
 
 from pathlib import Path
@@ -95,3 +96,28 @@ def test_batch_deduplicator_suppresses_duplicate_observed_file_state(tmp_path: P
     deleted = FileBatch.from_events([FileEvent(path, FileOperation.DELETED)])
     assert deduplicator.filter(deleted) == deleted
     assert deduplicator.filter(deleted).events == ()
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_batch_deduplicator_keeps_atomic_replacement_with_same_mtime_and_size(tmp_path: Path) -> None:
+    path = tmp_path / "app.py"
+    replacement = tmp_path / "replacement.py"
+    path.write_text("first", encoding="utf-8")
+    original_stat = path.stat()
+    batch = FileBatch.from_events([FileEvent(path, FileOperation.MODIFIED)])
+    deduplicator = BatchDeduplicator()
+
+    assert deduplicator.filter(batch) == batch
+
+    replacement.write_text("other", encoding="utf-8")
+    os.utime(
+        replacement,
+        ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+    )
+    os.replace(replacement, path)
+
+    replaced_stat = path.stat()
+    assert replaced_stat.st_size == original_stat.st_size
+    assert replaced_stat.st_mtime_ns == original_stat.st_mtime_ns
+    assert deduplicator.filter(batch) == batch
