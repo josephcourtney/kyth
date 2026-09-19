@@ -7,7 +7,6 @@ from pathlib import Path, PurePosixPath
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
 from kyth.changes import classify_batch
 from kyth.control.sse import encode_sse
@@ -231,56 +230,41 @@ def test_direct_resource_url_mapping_rejects_encoded_parent_traversal(segments: 
     assert direct_resource_relative_path(url) is None
 
 
-class ViewRegistryStateMachine(RuleBasedStateMachine):
-    """Reference-model arbitrary browser registration/generation interleavings."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.registry = ViewRegistry(inactivity_timeout=10.0, clock=lambda: 1.0)
-        self.expected: dict[str, tuple[int, str]] = {}
-
-    @rule(
-        view_id=_VIEW_ID,
-        generation=st.integers(min_value=0, max_value=20),
-        url_component=_COMPONENT,
-    )
-    def register(self, view_id: str, generation: int, url_component: str) -> None:
-        url = f"http://127.0.0.1/{url_component}"
-        current = self.expected.get(view_id)
-        self.registry.register(
-            view_id=view_id,
-            url=url,
-            generation=generation,
-        )
-        if current is None or generation >= current[0]:
-            self.expected[view_id] = (generation, url)
-
-    @rule(
-        view_id=_VIEW_ID,
-        generation=st.integers(min_value=0, max_value=20),
-    )
-    def mark_current(self, view_id: str, generation: int) -> None:
-        self.registry.set_generation((view_id,), generation)
-        current = self.expected.get(view_id)
-        if current is not None and generation >= current[0]:
-            self.expected[view_id] = (generation, current[1])
-
-    @rule(view_id=_VIEW_ID)
-    def ensure(self, view_id: str) -> None:
-        self.registry.ensure(view_id)
-        self.expected.setdefault(view_id, (0, ""))
-
-    @rule(view_id=_VIEW_ID)
-    def touch(self, view_id: str) -> None:
-        self.registry.touch(view_id)
-
-    @invariant()
-    def implementation_matches_reference_model(self) -> None:
-        actual = {view.view_id: (view.generation, view.url) for view in self.registry.snapshot()}
-        assert actual == self.expected
+_VIEW_SYNC_OPERATION = st.tuples(
+    st.sampled_from(("register", "mark-current", "ensure", "touch")),
+    _VIEW_ID,
+    st.integers(min_value=0, max_value=20),
+    _COMPONENT,
+)
 
 
-TestViewRegistryStateMachine = ViewRegistryStateMachine.TestCase
+@given(st.lists(_VIEW_SYNC_OPERATION, max_size=40))
+def test_view_registry_matches_reference_model_across_interleavings(
+    operations: list[tuple[str, str, int, str]],
+) -> None:
+    registry = ViewRegistry(inactivity_timeout=10.0, clock=lambda: 1.0)
+    expected: dict[str, tuple[int, str]] = {}
+
+    for operation, view_id, generation, url_component in operations:
+        if operation == "register":
+            url = f"http://127.0.0.1/{url_component}"
+            current = expected.get(view_id)
+            registry.register(view_id=view_id, url=url, generation=generation)
+            if current is None or generation >= current[0]:
+                expected[view_id] = (generation, url)
+        elif operation == "mark-current":
+            registry.set_generation((view_id,), generation)
+            current = expected.get(view_id)
+            if current is not None and generation >= current[0]:
+                expected[view_id] = (generation, current[1])
+        elif operation == "ensure":
+            registry.ensure(view_id)
+            expected.setdefault(view_id, (0, ""))
+        else:
+            registry.touch(view_id)
+
+        actual = {view.view_id: (view.generation, view.url) for view in registry.snapshot()}
+        assert actual == expected
 
 
 @given(_VIEW_ACTION_MEMBERSHIP)
