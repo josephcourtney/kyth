@@ -222,21 +222,37 @@ def _merge_content_actions(
             source_affected.update(render_source_views.get(path, ()))
         if path in known_data_paths:
             precise.update(complete_render_views)
-            for view_id, identities in data_source_views.get(path, {}).items():
-                if view_id in active and view_id not in deferred:
-                    _merge_action(
-                        actions,
-                        BrowserAction(
-                            view_id,
-                            BrowserActionKind.DATA_UPDATE,
-                            data_ids=tuple(sorted(set(identities))),
-                        ),
-                    )
+            _merge_data_actions(
+                actions,
+                data_source_views.get(path, {}),
+                active=active,
+                deferred=deferred,
+            )
         precise.update(deferred)
         affected.update(source_affected - deferred)
 
         for view_id in (affected & active) | (active - precise):
             _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))
+
+
+def _merge_data_actions(
+    actions: dict[str, BrowserAction],
+    identities_by_view: Mapping[str, Collection[str]],
+    *,
+    active: set[str],
+    deferred: set[str],
+) -> None:
+    for view_id, identities in identities_by_view.items():
+        if view_id not in active or view_id in deferred:
+            continue
+        _merge_action(
+            actions,
+            BrowserAction(
+                view_id,
+                BrowserActionKind.DATA_UPDATE,
+                data_ids=tuple(sorted(set(identities))),
+            ),
+        )
 
 
 def _merge_resource_actions(
