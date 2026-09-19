@@ -19,7 +19,7 @@ from kyth.provenance import (
     ManifestError,
     RenderProvenanceIndex,
 )
-from kyth.watcher import BatchSource, FileWatcher, WatcherConfig
+from kyth.watcher import BatchDeduplicator, BatchSource, FileWatcher, WatcherConfig
 
 if TYPE_CHECKING:
     import socket
@@ -66,6 +66,7 @@ class Supervisor:
         self._render_provenance = RenderProvenanceIndex()
         self._generated = GeneratedManifestIndex(config.manifest_paths)
         self._change_policy = ChangePolicy(config.restart_patterns)
+        self._deduplicator = BatchDeduplicator()
 
     @property
     def address(self) -> tuple[str, int]:
@@ -249,6 +250,14 @@ class Supervisor:
     def _handle_change_cycle(self, initial_batch: FileBatch, source: BatchSource) -> None:
         batch = initial_batch
         while True:
+            batch = self._deduplicator.filter(batch)
+            if not batch.events:
+                pending = source.drain_pending()
+                if pending is None:
+                    return
+                batch = pending
+                continue
+
             self._refresh_provenance()
             self._refresh_changed_manifests(batch.paths)
             stale_outputs = self._generated.mark_sources_changed(batch.paths)
@@ -306,9 +315,13 @@ class Supervisor:
         views = control.views.snapshot()
         output_views = self._generated.output_views({view.view_id: view.url for view in views if view.url})
         stale_outputs = self._generated.stale_outputs
-        return tuple(
-            sorted({view_id for output, view_ids in output_views.items() if output in stale_outputs for view_id in view_ids})
-        )
+        deferred = {
+            view_id
+            for output, view_ids in output_views.items()
+            if output in stale_outputs
+            for view_id in view_ids
+        }
+        return tuple(sorted(deferred))
 
     def _reload_for_browser_change(self, changed_paths: tuple[Path, ...]) -> None:
         if self._child is None or self.state.child.status is not ChildStatus.READY or self._control is None:

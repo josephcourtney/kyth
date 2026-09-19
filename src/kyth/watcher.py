@@ -15,6 +15,32 @@ DEFAULT_STEP_MS = 50
 DEFAULT_RUST_TIMEOUT_MS = 500
 
 
+@dataclass(frozen=True, slots=True)
+class ObservedPathState:
+    """Filesystem state used to recognize duplicate watcher notifications."""
+
+    exists: bool
+    mtime_ns: int | None = None
+    size: int | None = None
+
+
+class BatchDeduplicator:
+    """Suppress batches that do not describe a new observed filesystem state."""
+
+    def __init__(self) -> None:
+        self._states: dict[Path, ObservedPathState] = {}
+
+    def filter(self, batch: FileBatch) -> FileBatch:
+        retained: list[FileEvent] = []
+        for path in batch.paths:
+            state = _observe_path(path)
+            if self._states.get(path) == state:
+                continue
+            self._states[path] = state
+            retained.extend(event for event in batch.events if event.path == path)
+        return FileBatch.from_events(retained)
+
+
 class BatchSource(Protocol):
     def start(self) -> None:
         """Begin producing filesystem batches."""
@@ -153,3 +179,11 @@ def _absolute(path: Path) -> Path:
     if path.is_absolute():
         return path
     return Path.cwd() / path
+
+
+def _observe_path(path: Path) -> ObservedPathState:
+    try:
+        stat = path.stat()
+    except OSError:
+        return ObservedPathState(False)
+    return ObservedPathState(True, stat.st_mtime_ns, stat.st_size)

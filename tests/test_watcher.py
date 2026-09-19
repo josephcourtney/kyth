@@ -6,7 +6,7 @@ import pytest
 from watchfiles import Change
 
 from kyth.model import FileBatch, FileEvent, FileOperation
-from kyth.watcher import FileWatcher, WatcherConfig, normalize_changes
+from kyth.watcher import BatchDeduplicator, FileWatcher, WatcherConfig, normalize_changes
 
 
 @pytest.mark.unit
@@ -75,3 +75,23 @@ def test_watcher_observes_real_filesystem_change(tmp_path: Path) -> None:
 
     assert batch is not None
     assert changed in batch.paths
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_batch_deduplicator_suppresses_duplicate_observed_file_state(tmp_path: Path) -> None:
+    path = tmp_path / "app.py"
+    path.write_text("first", encoding="utf-8")
+    batch = FileBatch.from_events([FileEvent(path, FileOperation.MODIFIED)])
+    deduplicator = BatchDeduplicator()
+
+    assert deduplicator.filter(batch) == batch
+    assert deduplicator.filter(batch).events == ()
+
+    path.write_text("second-version", encoding="utf-8")
+    assert deduplicator.filter(batch) == batch
+
+    path.unlink()
+    deleted = FileBatch.from_events([FileEvent(path, FileOperation.DELETED)])
+    assert deduplicator.filter(deleted) == deleted
+    assert deduplicator.filter(deleted).events == ()
