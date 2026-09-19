@@ -1,4 +1,5 @@
 name: Rest design validation
+# Temporary validation only; removed after this implementation pass.
 
 on:
   push:
