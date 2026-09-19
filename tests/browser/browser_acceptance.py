@@ -650,6 +650,10 @@ def test_missed_event_recovers_conservatively_after_sse_reconnect(resource_harne
     _set_sentinel(harness.page, "discard")
     old_generation = _single_view(harness.supervisor).generation
     harness.context.set_offline(offline=True)
+    harness.page.wait_for_function(
+        "() => navigator.onLine === false",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
     harness.asset("site.css").write_text(
         "body { background-color: rgb(210, 220, 230); }",
         encoding="utf-8",
@@ -657,8 +661,11 @@ def test_missed_event_recovers_conservatively_after_sse_reconnect(resource_harne
     harness.supervisor._reload_for_browser_change((harness.asset("site.css"),))
     assert _single_view(harness.supervisor).generation == old_generation
 
-    time.sleep(0.2)
     harness.context.set_offline(offline=False)
+    harness.page.wait_for_function(
+        "() => navigator.onLine === true",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
 
     harness.page.wait_for_function(
         """() =>

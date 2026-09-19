@@ -178,6 +178,7 @@ CLIENT_JAVASCRIPT = (
   let awaitingSync = true;
   let actionChain = Promise.resolve();
   let registrationTimer = null;
+  let eventSource = null;
 
   function payloadFromEvent(event) {
     try {
@@ -352,7 +353,9 @@ CLIENT_JAVASCRIPT = (
     eventsUrl.searchParams.set("token", token);
     eventsUrl.searchParams.set("view_id", viewId);
 
+    awaitingSync = true;
     const events = new EventSource(eventsUrl);
+    eventSource = events;
 
     events.addEventListener("open", () => {
       awaitingSync = true;
@@ -419,6 +422,14 @@ CLIENT_JAVASCRIPT = (
     });
   }
 
+  function reconnectEvents() {
+    if (eventSource !== null) {
+      eventSource.close();
+      eventSource = null;
+    }
+    connectEvents();
+  }
+
   const mutationObserver = new MutationObserver(scheduleRegistration);
   mutationObserver.observe(document.documentElement, {
     subtree: true,
@@ -433,6 +444,7 @@ CLIENT_JAVASCRIPT = (
   }
 
   registerView().finally(connectEvents);
+  addEventListener("online", reconnectEvents);
   addEventListener("load", scheduleRegistration, {once: true});
   addEventListener("pageshow", scheduleRegistration);
 })();

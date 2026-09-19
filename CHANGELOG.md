@@ -30,6 +30,7 @@ Items should be categorized under these headings:
 - bypass Radon 6.0.1's faulty CLI configuration loader with a small wrapper around its public Python API, and stop masking complexity-tool failures as successful strict checks
 - run the Hypothesis property layer in a separate plain-assert pytest invocation with an in-memory example database so lazy Hypothesis imports do not violate small-test filesystem isolation while ordinary tests retain assertion rewriting
 - remove an artificial zero-duration sleep from the render-reporting transport-failure test
+- explicitly reopen the browser EventSource when connectivity returns so stale views always receive a fresh generation sync instead of depending on browser-specific automatic reconnect timing
 
 ## [0.2.0] - 2026-09-18
 
