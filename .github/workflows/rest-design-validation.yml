@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: "3.14"
       - run: uv sync
+      - run: uv run just format
+      - run: git diff -- . ':(exclude).github/workflows/rest-design-validation.yml'
       - run: uv run just check
       - run: uv run just complexity --strict
 
