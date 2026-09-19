@@ -124,18 +124,104 @@ Do not make Kyth responsible for arbitrary build execution in this phase.
 
 ## Post-v0.2.0 hardening
 
-After the Phase 1-8 implementation is validated as v0.2.0, prioritize reliability and maintainability before expanding functionality.
+Kyth is a local development server, not production infrastructure. Hardening therefore targets **semantic correctness and automatic recovery during ordinary development disruption** rather than high availability, hostile-client resistance, or indefinite operation.
 
-Sequence hardening work as follows:
+The reliability criterion is:
 
-1. characterize the codebase with existing dead-code, complexity, duplication, coverage, and test-category tooling;
-2. simplify code where findings identify real maintenance cost, preserving established architecture and invariants;
-3. move policy/provenance behavior toward fast hermetic tests while keeping true filesystem, localhost-network, and subprocess behavior in integration/system tests;
-4. strengthen failure, race, reconnect, cleanup, watcher-coalescing, and malformed-input coverage;
-5. use property-based testing on pure state/policy layers to exercise invariants across broad generated inputs;
-6. establish a minimal real-browser acceptance layer for the injected client and narrow-update/fallback behavior;
-7. only after the property and browser layers are stable, use mutation testing on pure state/policy modules to identify weak assertions;
-8. rehearse lifecycle/socket behavior across the supported platform and Python-version matrix as later hardening work.
+> Kyth must not silently leave a browser displaying state that Kyth believes is current when that state is stale. Rapid edits, invalid source, failed startup, child crashes, temporary browser disconnection, duplicate filesystem notifications, and delayed generated output should either recover automatically or fail conspicuously while preserving the last coherent generation.
+
+Implement hardening in the following priority order.
+
+### H1: synchronization-state correctness
+
+Treat filesystem observation, supervisor generation state, child readiness, browser view state, and generated-output readiness as one synchronization protocol.
+
+Deliver:
+
+- an independent Hypothesis state-machine/reference model for generation and view synchronization rather than testing only individual helper functions;
+- generated sequences covering registration, stale registration, generation advancement, acknowledgement, disconnect/reconnect, and duplicate delivery;
+- invariants that generations never regress, stale browser registrations cannot overwrite newer view state, and a view becomes current only through an explicit valid transition;
+- property coverage that reload dominates narrower actions and every active view is accounted for as affected, deliberately current, or conservatively stale;
+- regression cases for generated-output deferral interacting with restart and render/data provenance.
+
+Keep the model small and independent of the implementation. Do not introduce a production state-machine framework merely to support the tests.
+
+### H2: realistic development-race coverage
+
+Exercise event orderings that occur during normal editing rather than production-scale stress.
+
+Deliver regression tests for:
+
+- repeated edits while a replacement child is starting or stopping;
+- syntax/import/readiness failure followed by another edit and successful recovery;
+- browser disconnect or reconnect during a restart or narrow update;
+- stale or delayed view registration arriving after a newer generation;
+- generated source change, output deletion/recreation, and output rebuild around a child restart;
+- multiple generated outputs sharing or not sharing source inputs;
+- unexpected post-ready child exit followed by recovery;
+- duplicate-tab/view-identity behavior, with an explicit conservative policy if two live clients present the same identity.
+
+Prefer deterministic component tests for ordering semantics and retain real subprocess/browser tests only where the mechanism itself matters.
+
+### H3: cheap defensive boundaries
+
+Add small defenses where recovery semantics already exist. Do not build production backpressure or durability subsystems.
+
+Deliver:
+
+- strengthen watcher duplicate detection against common atomic-save/replacement patterns using filesystem identity/change metadata in addition to modification time and size; introduce content hashing only if realistic tests demonstrate that metadata remains ambiguous;
+- bound each SSE subscriber queue to a small finite size;
+- if an SSE subscriber falls behind, drop its pending narrow-update history, close that subscription, and rely on the existing reconnect sync path for authoritative recovery;
+- retain bounded registries and request-size limits and add focused malformed-input tests only for control paths that can corrupt synchronization state.
+
+The overload rule is: discard precision and force resynchronization rather than risk stale state.
+
+### H4: supported-environment rehearsal
+
+Make portability claims executable only for environments Kyth intends to support.
+
+Deliver:
+
+- run socket-transfer, watcher, child-lifecycle, failed-startup, and generation-acknowledgement tests on the supported Python versions;
+- run the same lifecycle subset on macOS and Linux if both are claimed supported;
+- keep Chromium and Firefox acceptance green;
+- add WebKit only if Safari/WebKit is an intended development target;
+- document unsupported operating systems rather than adding speculative compatibility machinery.
+
+This is compatibility rehearsal, not a production deployment matrix.
+
+### H5: diagnostic/test-quality follow-up
+
+Only after H1-H4 are stable:
+
+- use mutation testing selectively on pure modules such as change classification, invalidation, protocol encoding, and provenance;
+- inspect uncovered failure branches and add tests only where the branch represents a plausible development failure;
+- consider a small bounded history of recent structured change-cycle reports if real debugging experience shows that last_change_report is insufficient.
+
+Mutation score, aggregate coverage, soak duration, and resource-usage benchmarks are diagnostic signals rather than release targets.
+
+### Explicit hardening non-goals
+
+Do not add the following without evidence from actual Kyth use:
+
+- production-style high availability or zero-downtime guarantees;
+- large soak/stress systems intended to prove months-long uptime;
+- generalized queue/backpressure infrastructure;
+- hostile-client or network-adversary fuzzing beyond the existing loopback development security boundary;
+- arbitrary transactional frameworks around the supervisor;
+- content hashing of every changed file;
+- a general plugin or HMR framework.
+
+### Hardening verification
+
+The hardening program is successful when:
+
+1. property/state-machine tests cannot produce a sequence that regresses generation state or marks a stale view current;
+2. realistic restart, failure, reconnect, rapid-save, and generated-output races have deterministic regressions;
+3. a slow SSE subscriber cannot grow memory without bound and reconnects through authoritative synchronization;
+4. common atomic-save patterns are not suppressed as duplicate filesystem states;
+5. the existing static gates, strict complexity gate, lifecycle suite, and Chromium/Firefox browser acceptance suite remain green;
+6. supported platform/Python combinations pass the lifecycle/socket subset.
 
 Do not optimize test-category percentages by relabeling genuinely I/O-bound tests. Improve the boundary between pure policy and I/O mechanisms instead.
 
