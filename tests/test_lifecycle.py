@@ -88,6 +88,63 @@ def _write_broken_app(path: Path) -> None:
     path.write_text("this is not valid Python !!!\n", encoding="utf-8")
 
 
+def _write_http_only_app(path: Path) -> None:
+    path.write_text(
+        """from http import HTTPStatus
+
+
+async def app(scope, receive, send):
+    if scope["type"] == "lifespan":
+        raise RuntimeError("lifespan unsupported")
+    if scope["type"] == "http":
+        await send({"type": "http.response.start", "status": HTTPStatus.OK, "headers": []})
+        await send({"type": "http.response.body", "body": b"http-only"})
+""",
+        encoding="utf-8",
+    )
+
+
+def _write_startup_failed_app(path: Path) -> None:
+    path.write_text(
+        """async def app(scope, receive, send):
+    if scope["type"] != "lifespan":
+        return
+    message = await receive()
+    if message["type"] == "lifespan.startup":
+        await send({
+            "type": "lifespan.startup.failed",
+            "message": "fixture startup failure",
+        })
+""",
+        encoding="utf-8",
+    )
+
+
+def _write_crashing_app(path: Path) -> None:
+    path.write_text(
+        """import os
+from http import HTTPStatus
+
+
+async def app(scope, receive, send):
+    if scope["type"] == "lifespan":
+        while True:
+            message = await receive()
+            if message["type"] == "lifespan.startup":
+                await send({"type": "lifespan.startup.complete"})
+            elif message["type"] == "lifespan.shutdown":
+                await send({"type": "lifespan.shutdown.complete"})
+                return
+    elif scope["type"] == "http":
+        if scope["path"] == "/crash":
+            os._exit(17)
+        await send({"type": "http.response.start", "status": HTTPStatus.OK, "headers": []})
+        await send({"type": "http.response.body", "body": b"alive"})
+""",
+        encoding="utf-8",
+    )
+
+
 def _request(address: tuple[str, int]) -> str:
     connection = http.client.HTTPConnection(*address, timeout=2.0)
     try:
@@ -542,5 +599,106 @@ def test_direct_css_change_emits_targeted_css_update(tmp_path: Path) -> None:
             styled_events.close()
             other_stream.close()
             other_events.close()
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_app_without_lifespan_support_still_becomes_ready(tmp_path: Path) -> None:
+    module = tmp_path / "http_only_app.py"
+    _write_http_only_app(module)
+    sys.path.insert(0, str(tmp_path))
+    try:
+        config = SupervisorConfig(
+            "http_only_app:app",
+            port=0,
+            startup_timeout=5.0,
+            shutdown_timeout=0.5,
+        )
+        with Supervisor(config) as supervisor:
+            assert supervisor.start_child()
+            assert supervisor.state.child.status is ChildStatus.READY
+            assert supervisor.state.generation == 1
+            assert _request(supervisor.address) == "http-only"
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_lifespan_startup_failure_does_not_commit_generation(tmp_path: Path) -> None:
+    module = tmp_path / "startup_failed_app.py"
+    _write_startup_failed_app(module)
+    sys.path.insert(0, str(tmp_path))
+    try:
+        config = SupervisorConfig(
+            "startup_failed_app:app",
+            port=0,
+            startup_timeout=5.0,
+            shutdown_timeout=0.5,
+        )
+        with Supervisor(config) as supervisor:
+            address = supervisor.address
+            descriptor = supervisor.socket_fileno
+
+            assert not supervisor.start_child()
+            assert supervisor.state.child.status is ChildStatus.FAILED
+            assert supervisor.state.generation == 0
+            assert supervisor.address == address
+            assert supervisor.socket_fileno == descriptor
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_unexpected_post_ready_child_exit_is_detected_and_recoverable(tmp_path: Path) -> None:
+    module = tmp_path / "crashing_app.py"
+    _write_crashing_app(module)
+    sys.path.insert(0, str(tmp_path))
+    try:
+        config = SupervisorConfig(
+            "crashing_app:app",
+            port=0,
+            startup_timeout=5.0,
+            shutdown_timeout=0.5,
+        )
+        with Supervisor(config) as supervisor:
+            assert supervisor.start_child()
+            address = supervisor.address
+            control_address = supervisor.control_address
+            control_token = supervisor.control_token
+            assert _request(address) == "alive"
+
+            connection = http.client.HTTPConnection(*address, timeout=2.0)
+            try:
+                connection.request("GET", "/crash")
+                try:
+                    connection.getresponse()
+                except (http.client.RemoteDisconnected, ConnectionResetError):
+                    pass
+                else:
+                    pytest.fail("crashing child unexpectedly returned an HTTP response")
+            finally:
+                connection.close()
+
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                supervisor.poll()
+                if supervisor.state.child.status is ChildStatus.FAILED:
+                    break
+                time.sleep(0.02)
+
+            assert supervisor.state.child.status is ChildStatus.FAILED
+            assert supervisor.state.child.exit_code == 17
+            assert supervisor.state.generation == 1
+            assert supervisor.control_address == control_address
+            assert supervisor.control_token == control_token
+
+            assert supervisor.restart_child()
+            assert supervisor.state.child.status is ChildStatus.READY
+            assert supervisor.state.generation == 2
+            assert _request(address) == "alive"
     finally:
         sys.path.remove(str(tmp_path))

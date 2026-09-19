@@ -1,65 +1,110 @@
 # Testing Kyth
 
-Kyth uses several test layers because its correctness spans pure invalidation policy, local I/O, subprocess lifecycle, and browser behavior.
+Kyth spans pure invalidation policy, local filesystem/network I/O, subprocess lifecycle, optional render provenance, generated outputs, and browser behavior. The suite is intentionally layered rather than forcing all behavior through process-level tests.
 
 ## Default Python suite
 
-`just test` runs `tests/` and remains the normal development suite. Tests should use the narrowest truthful structural and size categories.
+`just test` runs the ordinary `tests/` suite. Use the narrowest truthful categories:
 
-- **unit / small**: pure data, policy, protocol, and state-transition behavior with no real I/O;
-- **component / small**: bounded in-process collaborations using fakes or mocks;
+- **unit / small**: pure data, policy, protocol, and state transitions with no real I/O;
+- **component / small**: bounded in-process collaborations using fakes/mocks;
 - **integration / medium**: real filesystem or localhost-network behavior;
 - **system / medium**: supervisor/child lifecycle involving sockets or subprocesses.
 
-Do not improve the category distribution by relabeling I/O-bound tests. Prefer extracting policy from mechanisms so important invariants can be tested hermetically.
+Do not improve the size distribution by relabeling I/O-bound tests. Extract pure policy from mechanisms where doing so makes behavior clearer.
 
 ## Property-based tests
 
-Hypothesis properties run as part of the default suite and are marked `property_based` plus `small`. They target invariants rather than examples, including:
+Hypothesis properties run in the default suite and are marked `property_based` plus `small`. Current invariants include:
 
-- deterministic/idempotent filesystem batch normalization;
+- deterministic/idempotent filesystem batch canonicalization;
 - associative batch merging;
 - exhaustive/disjoint change classification;
 - conservative fallback for unknown dependencies;
-- complete accounting of affected versus current views;
+- complete accounting of affected/current views;
 - monotonic view generations;
 - SSE serialization;
-- URL/path traversal safety.
+- direct URL/path traversal safety.
 
-Property tests should focus on pure state/policy layers. Filesystem, network, and process fuzzing belongs in later robustness work rather than being hidden inside a nominally small test.
+Property tests stay in pure state/policy layers. Filesystem/process fuzzing is separate robustness work.
+
+## Hermetic fault injection
+
+Small component tests exercise failure policy without paying subprocess cost where real process behavior is not essential. Current coverage includes:
+
+- render-report serialization, rejection, and unavailable-control behavior;
+- child control-channel EOF/shutdown/generation handling;
+- ASGI target parsing/resolution;
+- startup timeout/EOF/invalid-event handling;
+- generation acknowledgement failures;
+- graceful shutdown → terminate → kill escalation.
+
+Real descriptor transfer, socket ownership, and actual child replacement remain system tests.
+
+## Test-app matrix
+
+Kyth uses several deliberately different fixture applications rather than one universal demo app.
+
+| Fixture | Purpose / scenarios |
+| --- | --- |
+| Generated lifecycle apps in `tests/test_lifecycle.py` | ordinary restart, rapid same-size source replacement, syntax/import startup failure and recovery, explicit lifespan startup failure, apps without lifespan support, delayed readiness, hanging shutdown, unexpected post-ready child exit, persistent application/control sockets, HTML injection, targeted SSE decisions |
+| `tests/browser/apps/resource_app.py` | direct HTML output, CSS, image/SVG, JavaScript, independent tabs, duplicate stylesheet references, query-bearing resource URLs, `srcset`/`picture` unsafe images, CSS-observed assets, fonts, CSP, fragment HTML, multiple stylesheet updates, mixed update types, unknown resources, and readiness-gated restart failure |
+| `tests/browser/apps/passthrough_app.py` | ordinary injectable HTML contrasted with streaming HTML, explicit gzip content encoding, byte-range responses, and non-HTML bodies that must pass through unchanged |
+| `tests/browser/apps/jinja_app.py` | real optional Jinja rendering with inheritance and includes, validating runtime render provenance and selective/shared-template invalidation |
+| Manifest-backed generated fixture | explicit source→output dependency, stale-output deferral, and browser reload only after the generated output is rebuilt |
+
+The collection is intended to cover distinct semantic boundaries, not permutations that do not change Kyth behavior. Security validation of malformed control requests remains in control-plane tests; manifest schema/path validation remains in provenance tests; external frontend HMR ownership is outside v0.2.0's implemented surface.
 
 ## Real-browser acceptance
 
-The browser suite is intentionally separate from `just check` because Chromium is a large external runtime and should never be downloaded implicitly.
+The browser acceptance module is `tests/browser/browser_acceptance.py`. Its filename intentionally does not match the default `test_*.py` pattern: normal `just check` still compiles, formats, lints, and type-checks the browser harness and fixture apps, but it does not launch or download browsers.
 
-Install the pinned browser once:
+Install pinned Playwright browser builds once:
 
 ```console
 just browser-install
 ```
 
-Run acceptance tests:
+This installs both Chromium and Firefox into `.cache/playwright`.
+
+Run the complete browser contract:
 
 ```console
 just browser-test
 ```
 
-The acceptance module lives at `tests/browser/browser_acceptance.py`. Its filename intentionally does not match the default `test_*.py` pattern: normal `just check` still formats, lints, and type-checks it as source under `tests/`, but does not launch Chromium. The dedicated recipe uses Playwright 1.63.0 through an ephemeral `uv --with` environment, stores Chromium under `.cache/playwright`, and explicitly collects that module.
+The dedicated test environment supplies Playwright plus Jinja only for acceptance execution; neither becomes a Kyth runtime dependency.
 
-The current acceptance suite verifies:
+Every browser acceptance test is parameterized over Chromium and Firefox. The current matrix verifies:
 
-- injected client registration and complete resource observation;
-- stylesheet replacement without document reload;
-- direct image/SVG cache busting without document reload;
-- JavaScript change fallback to full reload;
-- failed stylesheet replacement fallback to full reload;
-- failed image replacement fallback to full reload.
+- initial injected-client registration and complete resource snapshots;
+- successful server restart → document reload;
+- failed replacement startup → no reload until a ready replacement exists;
+- CSS replacement without document navigation;
+- image/SVG cache busting without document navigation;
+- JavaScript/font/observed-resource fallback to full reload;
+- failed CSS/image narrow update fallback;
+- distinct-tab targeting;
+- duplicate stylesheet references;
+- preservation of pre-existing resource query parameters;
+- unsafe `srcset`/`picture` image fallback;
+- mixed narrow-update kinds collapsing to reload;
+- multiple stylesheet updates as one narrow transaction;
+- unknown-resource conservative reload;
+- direct HTML output reload;
+- CSP-compatible injection/control connection;
+- HTML fragments without closing tags;
+- offline/missed SSE event recovery through reconnect synchronization;
+- duplicate reload events for the current generation being ignored;
+- streaming/compressed/ranged/non-HTML pass-through behavior;
+- real Jinja include/base-template invalidation;
+- generated source changes waiting for regenerated output before navigation.
 
-Browser acceptance should test observable user behavior. Internal event structures belong in the Python suite.
+Browser acceptance tests observable user behavior. Internal broker/event decisions belong in the Python suite.
 
 ## Quality characterization
 
-The existing quality tools have distinct purposes:
+Use:
 
 ```console
 just cov
@@ -69,14 +114,14 @@ just complexity --strict
 just dup
 ```
 
-Radon is isolated from `pyproject.toml` through `radon.cfg` because Radon 6.0.1 incorrectly interprets pytest percent-style log format strings as ConfigParser interpolation.
+Radon is isolated from `pyproject.toml` through `radon.cfg` because Radon 6.0.1 incorrectly feeds pytest percent-style log strings through ConfigParser interpolation.
 
-Coverage is diagnostic rather than a target by itself. Prioritize untested failure branches and invariants over increasing aggregate line percentage.
+Coverage is diagnostic rather than a target by itself. Prefer important failure branches and invariant assertions over aggregate percentage.
 
 ## Mutation testing
 
-Mutation testing is deliberately deferred until the property-based and browser-acceptance layers are established and stable. When introduced, start with pure modules such as change classification, invalidation, provenance, and protocol encoding rather than subprocess/browser code.
+Mutation testing is deliberately deferred until property-based and browser-acceptance layers are stable. Start later with pure modules such as change classification, invalidation, provenance, and protocol encoding rather than subprocess/browser code.
 
 ## Platform matrix
 
-Cross-platform/socket-transfer matrix testing is later hardening work. It should not block the current test-architecture cleanup.
+Cross-platform/socket-transfer matrix testing is later hardening work and does not block the current test-architecture cleanup.

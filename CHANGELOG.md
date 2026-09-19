@@ -21,7 +21,8 @@ Items should be categorized under these headings:
 
 - add property-based tests for deterministic batches, conservative invalidation, generation monotonicity, protocol serialization, and direct-path safety
 - add hermetic fault-injection tests for render reporting and child readiness/control/shutdown policy
-- add a dedicated real-Chromium browser acceptance harness for client registration, CSS/image narrow updates, and reload fallback
+- add a dedicated real-browser acceptance harness running the same contract against Chromium and Firefox
+- add browser fixture applications covering direct resources, pass-through responses, real Jinja provenance, generated manifests, multi-view targeting, CSP, reconnect recovery, and readiness-gated restart behavior
 - add explicit `browser-install` and `browser-test` development recipes
 
 ### Fixed

@@ -614,7 +614,7 @@ test strict="true" fast="false" dev="false" quiet="" logs="" debug="" failing="f
   exit 0
 
 
-# Install the pinned Chromium build used by the real-browser acceptance suite.
+# Install the pinned Chromium and Firefox builds used by browser acceptance.
 [group('testing')]
 browser-install:
   #!/usr/bin/env bash
@@ -623,7 +623,7 @@ browser-install:
   just _log_start browser-install
   just _cache_dirs
   PLAYWRIGHT_BROWSERS_PATH="{{PLAYWRIGHT_BROWSERS_DIR}}" \
-    {{UV}} run --with "playwright=={{PLAYWRIGHT_VERSION}}" playwright install chromium
+    {{UV}} run --with "playwright=={{PLAYWRIGHT_VERSION}}" playwright install chromium firefox
   just _log_end browser-install
 
 
@@ -638,12 +638,13 @@ browser-test:
   just _cache_dirs
 
   if [ ! -d "{{PLAYWRIGHT_BROWSERS_DIR}}" ]; then
-    echo "[browser-test] Chromium is not installed; run: just browser-install" >&2
+    echo "[browser-test] browser binaries are not installed; run: just browser-install" >&2
     exit 1
   fi
 
   PLAYWRIGHT_BROWSERS_PATH="{{PLAYWRIGHT_BROWSERS_DIR}}" \
     {{UV}} run --with "playwright=={{PLAYWRIGHT_VERSION}}" \
+      --with "jinja2>=3.1,<4" \
       pytest -o cache_dir="{{PYTEST_CACHE_DIR}}" --no-cov \
       tests/browser/browser_acceptance.py
 

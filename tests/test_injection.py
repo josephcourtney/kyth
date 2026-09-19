@@ -149,3 +149,67 @@ async def test_explicitly_compressed_html_passes_through() -> None:
 
     assert sent[1]["body"] == b"compressed"
     assert b"client.js" not in sent[1]["body"]
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "status", "headers"),
+    [
+        ("HEAD", HTTPStatus.OK, [(b"content-type", b"text/html")]),
+        ("GET", HTTPStatus.NO_CONTENT, [(b"content-type", b"text/html")]),
+        ("GET", HTTPStatus.RESET_CONTENT, [(b"content-type", b"text/html")]),
+        ("GET", HTTPStatus.NOT_MODIFIED, [(b"content-type", b"text/html")]),
+        (
+            "GET",
+            HTTPStatus.PARTIAL_CONTENT,
+            [
+                (b"content-type", b"text/html"),
+                (b"content-range", b"bytes 0-9/10"),
+            ],
+        ),
+        ("GET", HTTPStatus.OK, [(b"content-type", b"text/plain")]),
+        ("GET", HTTPStatus.OK, []),
+        (
+            "GET",
+            HTTPStatus.OK,
+            [
+                (b"content-type", b"text/html"),
+                (b"content-encoding", b"br"),
+            ],
+        ),
+    ],
+)
+async def test_noninjectable_response_shapes_pass_through(
+    method: str,
+    status: HTTPStatus,
+    headers: list[tuple[bytes, bytes]],
+) -> None:
+    sent: list[ASGIMessage] = []
+
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send callbacks are async by contract
+        sent.append(message)
+
+    body = b"<html><body>untouched</body></html>"
+
+    async def app(_scope, _receive, send) -> None:
+        await send({
+            "type": "http.response.start",
+            "status": status,
+            "headers": headers,
+        })
+        await send({
+            "type": "http.response.body",
+            "body": body,
+            "more_body": False,
+        })
+
+    middleware = HTMLInjectionMiddleware(
+        app,
+        InjectionConfig("http://127.0.0.1:9001", "token", 1),
+    )
+    await middleware({"type": "http", "method": method, "headers": []}, _receive, capture)
+
+    assert sent[1]["body"] == body
+    assert b"client.js" not in sent[1]["body"]
