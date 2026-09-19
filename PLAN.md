@@ -134,6 +134,8 @@ Implement hardening in the following priority order.
 
 ### H1: synchronization-state correctness
 
+**Status: delivered.**
+
 Treat filesystem observation, supervisor generation state, child readiness, browser view state, and generated-output readiness as one synchronization protocol.
 
 Deliver:
@@ -147,6 +149,8 @@ Deliver:
 Keep the model small and independent of the implementation. Do not introduce a production state-machine framework merely to support the tests.
 
 ### H2: realistic development-race coverage
+
+**Status: delivered for the identified V1 development races.**
 
 Exercise event orderings that occur during normal editing rather than production-scale stress.
 
@@ -165,6 +169,8 @@ Prefer deterministic component tests for ordering semantics and retain real subp
 
 ### H3: cheap defensive boundaries
 
+**Status: delivered.**
+
 Add small defenses where recovery semantics already exist. Do not build production backpressure or durability subsystems.
 
 Deliver:
@@ -177,6 +183,8 @@ Deliver:
 The overload rule is: discard precision and force resynchronization rather than risk stale state.
 
 ### H4: supported-environment rehearsal
+
+**Status: delivered for macOS/Linux and Python 3.12-3.14; Chromium/Firefox remain the browser targets.**
 
 Make portability claims executable only for environments Kyth intends to support.
 
@@ -191,6 +199,8 @@ Deliver:
 This is compatibility rehearsal, not a production deployment matrix.
 
 ### H5: diagnostic/test-quality follow-up
+
+**Status: active maintenance.** The first narrow mutation slice covers change classification and protocol encoding; further expansion remains evidence-driven.
 
 Only after H1-H4 are stable:
 
