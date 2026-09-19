@@ -30,6 +30,12 @@ _OPERATION = st.sampled_from(tuple(FileOperation))
 
 _EVENTS = st.lists(st.tuples(_COMPONENT, _OPERATION), max_size=20)
 _VIEW_MEMBERSHIP = st.dictionaries(_VIEW_ID, st.booleans(), min_size=1, max_size=8)
+_VIEW_ACTION_MEMBERSHIP = st.dictionaries(
+    _VIEW_ID,
+    st.tuples(st.booleans(), st.booleans()),
+    min_size=1,
+    max_size=8,
+)
 
 
 @given(_EVENTS)
@@ -278,3 +284,53 @@ class ViewRegistryStateMachine(RuleBasedStateMachine):
 
 
 TestViewRegistryStateMachine = ViewRegistryStateMachine.TestCase
+
+
+@given(_VIEW_ACTION_MEMBERSHIP)
+def test_mixed_browser_actions_account_for_every_view_and_reload_dominates(
+    membership: dict[str, tuple[bool, bool]],
+) -> None:
+    active = set(membership)
+    reload_views = {view_id for view_id, (reload, _css) in membership.items() if reload}
+    css_views = {view_id for view_id, (_reload, css) in membership.items() if css}
+    changed = Path("changed.html")
+    other = Path("other.html")
+    stylesheet = Path("site.css")
+    resource_views = {
+        view_id: (
+            BrowserResource(
+                url=f"http://127.0.0.1/{view_id}/site.css",
+                kind=BrowserResourceKind.STYLESHEET,
+            ),
+        )
+        for view_id in css_views
+    }
+
+    decision = decide_browser_updates(
+        (changed, stylesheet),
+        known_outputs={changed, other},
+        output_views={
+            changed: tuple(sorted(reload_views)),
+            other: tuple(sorted(active - reload_views)),
+        },
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
+        known_resources={stylesheet},
+        resource_views={stylesheet: resource_views},
+        complete_resource_view_ids=active,
+        active_view_ids=active,
+    )
+
+    actions = {action.view_id: action.kind for action in decision.actions}
+    expected_action_views = reload_views | css_views
+    assert set(actions) == expected_action_views
+    assert set(decision.current_view_ids) == active - expected_action_views
+    assert set(actions) | set(decision.current_view_ids) == active
+    assert set(actions).isdisjoint(decision.current_view_ids)
+    assert all(actions[view_id] is BrowserActionKind.RELOAD for view_id in reload_views)
+    assert all(
+        actions[view_id] is BrowserActionKind.CSS_UPDATE
+        for view_id in css_views - reload_views
+    )
