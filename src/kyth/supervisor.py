@@ -201,7 +201,7 @@ class Supervisor:
         """Release the child and supervisor-owned sockets."""
         self.close()
 
-    def _start_child(self, *, reload_browsers: bool) -> bool:
+    def _start_child(self, *, reload_browsers: bool, commit_control: bool = True) -> bool:
         listening_socket = self._require_socket()
         if self._child is not None:
             msg = "cannot start a child while another child is owned"
@@ -224,9 +224,10 @@ class Supervisor:
         result = child.wait_for_startup(self.config.startup_timeout)
         if result.ready:
             self.state = DevelopmentState(generation, ChildState(ChildStatus.READY, pid=child.pid))
-            control.set_generation(generation)
-            if reload_browsers:
-                control.publish(ControlEvent.reload(generation, reason="server-restart"))
+            if commit_control:
+                control.set_generation(generation)
+                if reload_browsers:
+                    control.publish(ControlEvent.reload(generation, reason="server-restart"))
             logger.info("child %s ready; generation %d", child.pid, generation)
             return True
 
@@ -255,7 +256,7 @@ class Supervisor:
             self._generated.mark_outputs_updated(relevant_paths)
 
             if changes.requires_restart:
-                self.restart_child()
+                self._restart_for_change_cycle()
             elif relevant_paths:
                 self._reload_for_browser_change(relevant_paths)
             else:
@@ -265,6 +266,47 @@ class Supervisor:
             if pending is None:
                 return
             batch = pending
+
+    def _restart_for_change_cycle(self) -> None:
+        """Replace the child, then synchronize only views whose served state is ready."""
+        self.stop_child()
+        if not self._start_child(reload_browsers=False, commit_control=False):
+            return
+
+        control = self._require_control()
+        generation = self.state.generation
+        deferred_view_ids = self._stale_generated_view_ids()
+        if deferred_view_ids:
+            control.mark_views_current(deferred_view_ids, generation)
+        control.set_generation(generation)
+        if deferred_view_ids:
+            control.publish(
+                ControlEvent.sync(generation, reload_required=False),
+                view_ids=deferred_view_ids,
+            )
+
+        active_view_ids = {view.view_id for view in control.views.snapshot()}
+        reload_view_ids = tuple(sorted(active_view_ids - set(deferred_view_ids)))
+        if reload_view_ids:
+            control.publish(
+                ControlEvent.reload(generation, reason="server-restart"),
+                view_ids=reload_view_ids,
+            )
+        logger.info(
+            "replacement child ready; generation %d; %d view(s) reloaded; %d generated view(s) deferred",
+            generation,
+            len(reload_view_ids),
+            len(deferred_view_ids),
+        )
+
+    def _stale_generated_view_ids(self) -> tuple[str, ...]:
+        control = self._require_control()
+        views = control.views.snapshot()
+        output_views = self._generated.output_views({view.view_id: view.url for view in views if view.url})
+        stale_outputs = self._generated.stale_outputs
+        return tuple(
+            sorted({view_id for output, view_ids in output_views.items() if output in stale_outputs for view_id in view_ids})
+        )
 
     def _reload_for_browser_change(self, changed_paths: tuple[Path, ...]) -> None:
         if self._child is None or self.state.child.status is not ChildStatus.READY or self._control is None:
@@ -368,8 +410,12 @@ class Supervisor:
         self,
         generated_output_views: dict[Path, tuple[str, ...]],
     ) -> dict[Path, tuple[str, ...]]:
-        manifest_views = {view_id for view_ids in generated_output_views.values() for view_id in view_ids}
-        return {source: tuple(sorted(manifest_views)) for source in self._generated.known_sources}
+        return {
+            source: tuple(
+                sorted({view_id for output in outputs for view_id in generated_output_views.get(output, ())})
+            )
+            for source, outputs in self._generated.source_outputs.items()
+        }
 
     def _relevant_browser_paths(self, changes: ChangeSet) -> tuple[Path, ...]:
         manifest_paths = self._generated.manifest_paths

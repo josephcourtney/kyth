@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from kyth.changes import classify_batch
-from kyth.model import FileBatch, FileEvent, FileOperation
+from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch, FileEvent, FileOperation
 from kyth.supervisor import Supervisor, SupervisorConfig
 
 
@@ -117,3 +117,99 @@ def test_manifest_source_change_is_deferred_until_generated_output_changes(tmp_p
 
     assert relevant == (output_path,)
     assert supervisor._generated.stale_outputs == frozenset()
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_restart_defers_view_until_stale_generated_output_is_ready(tmp_path: Path) -> None:
+    source_path = tmp_path / "generator.py"
+    output_path = tmp_path / "public" / "index.html"
+    manifest_path = tmp_path / "kyth-manifest.json"
+    output_path.parent.mkdir()
+    source_path.write_text("SOURCE = 1", encoding="utf-8")
+    output_path.write_text("<html>old</html>", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps({
+            "version": 1,
+            "outputs": [
+                {
+                    "output": "public/index.html",
+                    "url": "/",
+                    "sources": ["generator.py"],
+                }
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    supervisor = Supervisor(
+        SupervisorConfig(
+            "example:app",
+            watch_roots=(tmp_path,),
+            manifest_paths=(manifest_path,),
+        )
+    )
+    with supervisor:
+        supervisor._generated.load_all()
+        control = supervisor._require_control()
+        control.views.register(view_id="generated", url="http://127.0.0.1:8000/", generation=0)
+        control.views.register(view_id="dynamic", url="http://127.0.0.1:8000/dynamic", generation=0)
+        supervisor._generated.mark_sources_changed((source_path,))
+
+        def start_ready(*, reload_browsers: bool, commit_control: bool = True) -> bool:
+            assert not reload_browsers
+            assert not commit_control
+            supervisor.state = DevelopmentState(1, ChildState(ChildStatus.READY, pid=123))
+            return True
+
+        with (
+            patch.object(supervisor, "_start_child", side_effect=start_ready),
+            patch.object(control, "publish") as publish,
+        ):
+            supervisor._restart_for_change_cycle()
+
+        assert control.generation == 1
+        assert control.views.get("generated").generation == 1
+        assert control.views.get("dynamic").generation == 0
+        assert publish.call_count == 2
+        sync_call, reload_call = publish.call_args_list
+        assert sync_call.args[0].kind.value == "sync"
+        assert sync_call.kwargs["view_ids"] == ("generated",)
+        assert reload_call.args[0].kind.value == "reload"
+        assert reload_call.kwargs["view_ids"] == ("dynamic",)
+        assert supervisor._generated.stale_outputs == frozenset({output_path.resolve()})
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_generated_source_deferral_is_limited_to_dependent_outputs(tmp_path: Path) -> None:
+    first_source = tmp_path / "first.py"
+    second_source = tmp_path / "second.py"
+    first_output = tmp_path / "public" / "first.html"
+    second_output = tmp_path / "public" / "second.html"
+    first_output.parent.mkdir()
+    for path in (first_source, second_source, first_output, second_output):
+        path.write_text("x", encoding="utf-8")
+    manifest_path = tmp_path / "kyth-manifest.json"
+    manifest_path.write_text(
+        json.dumps({
+            "version": 1,
+            "outputs": [
+                {"output": "public/first.html", "url": "/first", "sources": ["first.py"]},
+                {"output": "public/second.html", "url": "/second", "sources": ["second.py"]},
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    supervisor = Supervisor(SupervisorConfig("example:app", watch_roots=(tmp_path,), manifest_paths=(manifest_path,)))
+    supervisor._generated.load_all()
+    generated_output_views = {
+        first_output.resolve(): ("first-view",),
+        second_output.resolve(): ("second-view",),
+    }
+
+    deferred = supervisor._generated_source_views(generated_output_views)
+
+    assert deferred[first_source.resolve()] == ("first-view",)
+    assert deferred[second_source.resolve()] == ("second-view",)
