@@ -126,7 +126,7 @@ class RenderProvenanceIndex:
             current = _source_version(path)
             versions = self._data_source_view_versions.get(path, {})
             stale_views = {
-                view_id: self._data_source_views[path][view_id]
+                view_id: tuple(sorted(self._data_source_views[path][view_id]))
                 for view_id, version in versions.items()
                 if version != current
             }

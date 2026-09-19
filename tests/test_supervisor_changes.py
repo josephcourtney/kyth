@@ -169,8 +169,12 @@ def test_restart_defers_view_until_stale_generated_output_is_ready(tmp_path: Pat
             supervisor._restart_for_change_cycle((source_path,))
 
         assert control.generation == 1
-        assert control.views.get("generated").generation == 1
-        assert control.views.get("dynamic").generation == 0
+        generated_view = control.views.get("generated")
+        dynamic_view = control.views.get("dynamic")
+        assert generated_view is not None
+        assert dynamic_view is not None
+        assert generated_view.generation == 1
+        assert dynamic_view.generation == 0
         assert publish.call_count == 2
         sync_call, reload_call = publish.call_args_list
         assert sync_call.args[0].kind.value == "sync"

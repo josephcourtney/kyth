@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
@@ -447,7 +448,7 @@ class Supervisor:
 
     def _combined_output_views(
         self,
-        generated_output_views: dict[Path, tuple[str, ...]],
+        generated_output_views: Mapping[Path, tuple[str, ...]],
     ) -> dict[Path, tuple[str, ...]]:
         combined = {output: set(view_ids) for output, view_ids in self._direct_outputs.output_views.items()}
         for output, view_ids in generated_output_views.items():
