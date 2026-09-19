@@ -737,6 +737,22 @@ cov lines="false":
   just _log_end cov
 
 
+# Run the deliberately narrow mutation-testing slice configured in pyproject.toml.
+#
+# Mutation results are diagnostic hardening input, not a release score gate.
+[group('test quality')]
+mutation:
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  just _log_start mutation
+  just _cache_dirs
+
+  {{UV}} run mutmut run
+
+  just _log_end mutation
+
+
 # ======================================================================
 # Build / packaging / publishing
 # ======================================================================
