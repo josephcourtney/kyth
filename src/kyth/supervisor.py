@@ -22,8 +22,8 @@ from kyth.provenance import (
 from kyth.watcher import BatchDeduplicator, BatchSource, FileWatcher, WatcherConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     import socket
+    from collections.abc import Mapping
     from multiprocessing.context import SpawnContext
     from types import TracebackType
 
