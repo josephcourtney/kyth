@@ -699,6 +699,32 @@ def test_missed_event_recovers_conservatively_after_sse_reconnect(resource_harne
     )
 
 
+def test_offline_browser_recovers_after_server_restart(resource_harness: _Harness) -> None:
+    harness = resource_harness
+    _set_sentinel(harness.page, "discard")
+    old_generation = _single_view(harness.supervisor).generation
+    harness.context.set_offline(offline=True)
+    harness.page.wait_for_function(
+        "() => navigator.onLine === false",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+
+    assert harness.supervisor.restart_child()
+    assert harness.supervisor.state.generation == old_generation + 1
+    assert _single_view(harness.supervisor).generation == old_generation
+
+    harness.context.set_offline(offline=False)
+    harness.page.wait_for_function(
+        "() => navigator.onLine === true",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+    harness.page.wait_for_function(
+        "() => window.__kythSentinel === undefined",
+        timeout=RECONNECT_TIMEOUT_MS,
+    )
+    _wait_for_generation(harness.supervisor, old_generation + 1)
+
+
 def test_duplicate_reload_for_current_generation_is_ignored(resource_harness: _Harness) -> None:
     harness = resource_harness
     _set_sentinel(harness.page, "keep")
@@ -839,6 +865,50 @@ def test_restart_worthy_generated_source_waits_for_output_after_child_ready(
         """,
         timeout=BROWSER_TIMEOUT_MS,
     )
+
+
+def test_restart_generated_view_ignores_transient_output_deletion(
+    manifest_harness: _Harness,
+) -> None:
+    harness = manifest_harness
+    _set_sentinel(harness.page, "keep")
+    source = harness.asset("generator.py")
+    output = harness.asset("generated.html")
+    source.write_text("VERSION = 3\n", encoding="utf-8")
+
+    harness.supervisor._handle_change_cycle(
+        FileBatch.from_events([FileEvent(source, FileOperation.MODIFIED)]),
+        _NoPendingBatches(),
+    )
+
+    generation = harness.supervisor.state.generation
+    _wait_for_generation(harness.supervisor, generation)
+    assert _sentinel(harness.page) == "keep"
+    assert output.resolve() in harness.supervisor._generated.stale_outputs
+
+    output.unlink()
+    harness.supervisor._handle_change_cycle(
+        FileBatch.from_events([FileEvent(output, FileOperation.DELETED)]),
+        _NoPendingBatches(),
+    )
+
+    assert _sentinel(harness.page) == "keep"
+    assert output.resolve() in harness.supervisor._generated.stale_outputs
+
+    output.write_text(_page("generated-after-delete"), encoding="utf-8")
+    harness.supervisor._handle_change_cycle(
+        FileBatch.from_events([FileEvent(output, FileOperation.ADDED)]),
+        _NoPendingBatches(),
+    )
+
+    harness.page.wait_for_function(
+        """() =>
+            document.querySelector('#status').textContent === 'generated-after-delete' &&
+            window.__kythSentinel === undefined
+        """,
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+    assert output.resolve() not in harness.supervisor._generated.stale_outputs
 
 
 def test_generated_source_waits_for_rebuild_before_browser_reload(
