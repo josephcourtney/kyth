@@ -28,6 +28,8 @@ Items should be categorized under these headings:
 ### Fixed
 
 - isolate Radon 6.0.1 behind a dedicated `radon.cfg` so pytest percent-style logging configuration no longer breaks complexity analysis
+- initialize Hypothesis before per-test hermeticity enforcement and use an in-memory example database so pure property tests remain truthfully small
+- remove an artificial zero-duration sleep from the render-reporting transport-failure test
 
 ## [0.2.0] - 2026-09-18
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from http import HTTPStatus
@@ -124,11 +123,10 @@ def test_post_render_record_logs_rejected_response(
 @pytest.mark.small
 @pytest.mark.asyncio
 async def test_report_render_record_swallows_transport_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def failing_to_thread(
+    async def failing_to_thread(  # ruff: ignore[unused-async] - asyncio.to_thread returns an awaitable
         _function: Callable[..., object],
         *_args: object,
     ) -> object:
-        await asyncio.sleep(0)
         raise OSError("control plane unavailable")
 
     monkeypatch.setattr(reporting.asyncio, "to_thread", failing_to_thread)
