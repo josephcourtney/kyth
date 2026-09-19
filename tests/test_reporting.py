@@ -13,6 +13,7 @@ from kyth.model import RenderRecord, SourceVersion
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import ClassVar
 
 
 class _Response:
@@ -26,8 +27,8 @@ class _Response:
 
 
 class _Connection:
-    instances: list[_Connection] = []
-    response_status = HTTPStatus.OK
+    instances: ClassVar[list[_Connection]] = []
+    response_status: ClassVar[HTTPStatus] = HTTPStatus.OK
 
     def __init__(self, host: str, port: int, *, timeout: float) -> None:
         self.host = host

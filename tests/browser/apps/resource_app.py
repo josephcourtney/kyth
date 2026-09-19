@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from http import HTTPStatus
 from pathlib import Path
@@ -86,16 +87,24 @@ async def _file_response(
     *,
     headers: list[tuple[bytes, bytes]] | None = None,
 ) -> None:
-    if not path.exists():
+    body = await asyncio.to_thread(_read_file, path)
+    if body is None:
         await _response(send, HTTPStatus.NOT_FOUND, b"text/plain", b"missing")
         return
     await _response(
         send,
         HTTPStatus.OK,
         content_type,
-        path.read_bytes(),
+        body,
         headers=headers,
     )
+
+
+def _read_file(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
 
 
 async def _response(

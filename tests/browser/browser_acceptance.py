@@ -43,7 +43,7 @@ class _Page(Protocol):
 
 class _BrowserContext(Protocol):
     def new_page(self) -> _Page: ...
-    def set_offline(self, offline: bool) -> None: ...
+    def set_offline(self, *, offline: bool) -> None: ...
     def close(self) -> None: ...
 
 
@@ -648,7 +648,7 @@ def test_missed_event_recovers_conservatively_after_sse_reconnect(resource_harne
     harness = resource_harness
     _set_sentinel(harness.page, "discard")
     old_generation = _single_view(harness.supervisor).generation
-    harness.context.set_offline(True)
+    harness.context.set_offline(offline=True)
     harness.asset("site.css").write_text(
         "body { background-color: rgb(210, 220, 230); }",
         encoding="utf-8",
@@ -657,7 +657,7 @@ def test_missed_event_recovers_conservatively_after_sse_reconnect(resource_harne
     assert _single_view(harness.supervisor).generation == old_generation
 
     time.sleep(0.2)
-    harness.context.set_offline(False)
+    harness.context.set_offline(offline=False)
 
     harness.page.wait_for_function(
         """() =>

@@ -12,58 +12,84 @@ async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
     if scope["type"] != "http":
         return
 
-    path = str(scope["path"])
+    await _serve_path(str(scope["path"]), send)
+
+
+async def _serve_path(path: str, send: Any) -> None:
     if path == "/normal/":
-        await _response(send, HTTPStatus.OK, [(b"content-type", b"text/html")], b"<html><body>normal</body></html>")
-        return
-    if path == "/streaming/":
-        await send({
-            "type": "http.response.start",
-            "status": HTTPStatus.OK,
-            "headers": [(b"content-type", b"text/html")],
-        })
-        await send({
-            "type": "http.response.body",
-            "body": b"<html><body>stream",
-            "more_body": True,
-        })
-        await send({
-            "type": "http.response.body",
-            "body": b"ing</body></html>",
-            "more_body": False,
-        })
-        return
-    if path == "/compressed/":
-        body = gzip.compress(b"<html><body>compressed</body></html>")
         await _response(
             send,
             HTTPStatus.OK,
-            [
-                (b"content-type", b"text/html"),
-                (b"content-encoding", b"gzip"),
-            ],
-            body,
+            [(b"content-type", b"text/html")],
+            b"<html><body>normal</body></html>",
         )
-        return
-    if path == "/range/":
-        body = b"<html><body>partial</body></html>"
+    elif path == "/streaming/":
+        await _streaming_response(send)
+    elif path == "/compressed/":
+        await _compressed_response(send)
+    elif path == "/range/":
+        await _range_response(send)
+    elif path == "/plain/":
         await _response(
             send,
-            HTTPStatus.PARTIAL_CONTENT,
-            [
-                (b"content-type", b"text/html"),
-                (
-                    b"content-range",
-                    f"bytes 0-{len(body) - 1}/{len(body)}".encode(),
-                ),
-            ],
-            body,
+            HTTPStatus.OK,
+            [(b"content-type", b"text/plain")],
+            b"plain",
         )
-        return
-    if path == "/plain/":
-        await _response(send, HTTPStatus.OK, [(b"content-type", b"text/plain")], b"plain")
-        return
-    await _response(send, HTTPStatus.NOT_FOUND, [(b"content-type", b"text/plain")], b"missing")
+    else:
+        await _response(
+            send,
+            HTTPStatus.NOT_FOUND,
+            [(b"content-type", b"text/plain")],
+            b"missing",
+        )
+
+
+async def _streaming_response(send: Any) -> None:
+    await send({
+        "type": "http.response.start",
+        "status": HTTPStatus.OK,
+        "headers": [(b"content-type", b"text/html")],
+    })
+    await send({
+        "type": "http.response.body",
+        "body": b"<html><body>stream",
+        "more_body": True,
+    })
+    await send({
+        "type": "http.response.body",
+        "body": b"ing</body></html>",
+        "more_body": False,
+    })
+
+
+async def _compressed_response(send: Any) -> None:
+    body = gzip.compress(b"<html><body>compressed</body></html>")
+    await _response(
+        send,
+        HTTPStatus.OK,
+        [
+            (b"content-type", b"text/html"),
+            (b"content-encoding", b"gzip"),
+        ],
+        body,
+    )
+
+
+async def _range_response(send: Any) -> None:
+    body = b"<html><body>partial</body></html>"
+    await _response(
+        send,
+        HTTPStatus.PARTIAL_CONTENT,
+        [
+            (b"content-type", b"text/html"),
+            (
+                b"content-range",
+                f"bytes 0-{len(body) - 1}/{len(body)}".encode(),
+            ),
+        ],
+        body,
+    )
 
 
 async def _lifespan(receive: Any, send: Any) -> None:
