@@ -256,8 +256,10 @@ def test_view_registry_matches_reference_model_across_interleavings(
                 generation=generation,
                 registration_sequence=registration_sequence,
             )
-            if current is None or generation > current[0] or (
-                generation == current[0] and registration_sequence >= current[1]
+            if (
+                current is None
+                or generation > current[0]
+                or (generation == current[0] and registration_sequence >= current[1])
             ):
                 expected[view_id] = (generation, registration_sequence, url)
         elif operation == "mark-current":
@@ -271,10 +273,7 @@ def test_view_registry_matches_reference_model_across_interleavings(
         else:
             registry.touch(view_id)
 
-        actual = {
-            view.view_id: (view.generation, view.registration_sequence, view.url)
-            for view in registry.snapshot()
-        }
+        actual = {view.view_id: (view.generation, view.registration_sequence, view.url) for view in registry.snapshot()}
         assert actual == expected
 
 
