@@ -457,7 +457,7 @@ class Supervisor:
 
     def _generated_source_views(
         self,
-        generated_output_views: dict[Path, tuple[str, ...]],
+        generated_output_views: Mapping[Path, tuple[str, ...]],
     ) -> dict[Path, tuple[str, ...]]:
         return {
             source: tuple(sorted({view_id for output in outputs for view_id in generated_output_views.get(output, ())}))
