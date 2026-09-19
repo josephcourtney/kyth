@@ -550,7 +550,11 @@ CLIENT_JAVASCRIPT = (
   }
 
   registerView().finally(connectEvents);
-  queueMicrotask(restorePreservedState);
+  if (document.readyState === "loading") {
+    addEventListener("DOMContentLoaded", restorePreservedState, {once: true});
+  } else {
+    queueMicrotask(restorePreservedState);
+  }
   addEventListener("online", reconnectEvents);
   addEventListener("load", scheduleRegistration, {once: true});
   addEventListener("pageshow", scheduleRegistration);
