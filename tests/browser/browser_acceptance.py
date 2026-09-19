@@ -309,6 +309,19 @@ def test_image_change_cache_busts_without_document_reload(resource_harness: _Har
     _wait_for_generation(harness.supervisor, generation)
 
 
+def test_opt_in_state_is_restored_after_full_reload(resource_harness: _Harness) -> None:
+    harness = resource_harness
+    harness.page.goto(f"{harness.origin}/state/", wait_until="load")
+    _wait_for_registered_path(harness.supervisor, "/state/")
+
+    assert harness.supervisor.restart_child()
+
+    harness.page.wait_for_function(
+        "() => window.__kythRestoredState?.value === 'preserved'",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+
+
 def test_successful_server_restart_reloads_document(resource_harness: _Harness) -> None:
     harness = resource_harness
     _set_sentinel(harness.page, "discard")
@@ -923,6 +936,19 @@ addEventListener("kyth:data-update", (event) => {
     )
     root.joinpath("data-unhandled.html").write_text(
         _page("data-unhandled"),
+        encoding="utf-8",
+    )
+    root.joinpath("state.html").write_text(
+        """<!doctype html>
+<html><head><script>
+addEventListener("kyth:before-reload", (event) => {
+  event.detail.preserve({value: "preserved"});
+});
+addEventListener("kyth:restore-state", (event) => {
+  window.__kythRestoredState = event.detail.state;
+});
+</script></head><body><h1 id="status">state</h1></body></html>
+""",
         encoding="utf-8",
     )
     root.joinpath("index.html").write_text(

@@ -19,6 +19,7 @@ CLIENT_JAVASCRIPT = (
 
   const VIEW_KEY = "__kyth_view_id__";
   const PENDING_GENERATION_KEY = "__kyth_pending_generation__";
+  const PRESERVED_STATE_KEY = "__kyth_preserved_state__";
   const DEFAULT_RESOURCE_TIMING_CAPACITY = 250;
   const RESOURCE_TIMING_CAPACITY = 5000;
   const MAX_REGISTERED_RESOURCES = 256;
@@ -213,6 +214,50 @@ CLIENT_JAVASCRIPT = (
     return url.href;
   }
 
+  function preserveStateForReload(generation) {
+    let claimed = false;
+    let state;
+    const detail = {
+      generation,
+      preserve(value) {
+        claimed = true;
+        state = value;
+      },
+    };
+    dispatchEvent(new CustomEvent("kyth:before-reload", {detail}));
+    if (!claimed) {
+      sessionRemove(PRESERVED_STATE_KEY);
+      return;
+    }
+    try {
+      sessionSet(PRESERVED_STATE_KEY, JSON.stringify({generation, state}));
+    } catch {
+      sessionRemove(PRESERVED_STATE_KEY);
+    }
+  }
+
+  function restorePreservedState() {
+    const raw = sessionGet(PRESERVED_STATE_KEY);
+    sessionRemove(PRESERVED_STATE_KEY);
+    if (raw === null) {
+      return;
+    }
+    try {
+      const preserved = JSON.parse(raw);
+      const generation = Number(preserved?.generation);
+      if (!Number.isFinite(generation) || generation > pageGeneration) {
+        return;
+      }
+      dispatchEvent(
+        new CustomEvent("kyth:restore-state", {
+          detail: {generation, state: preserved.state},
+        })
+      );
+    } catch {
+      return;
+    }
+  }
+
   function reloadForGeneration(generation) {
     if (
       reloading ||
@@ -222,6 +267,7 @@ CLIENT_JAVASCRIPT = (
       return;
     }
     reloading = true;
+    preserveStateForReload(generation);
     sessionSet(PENDING_GENERATION_KEY, String(generation));
     location.reload();
   }
@@ -504,6 +550,7 @@ CLIENT_JAVASCRIPT = (
   }
 
   registerView().finally(connectEvents);
+  queueMicrotask(restorePreservedState);
   addEventListener("online", reconnectEvents);
   addEventListener("load", scheduleRegistration, {once: true});
   addEventListener("pageshow", scheduleRegistration);
