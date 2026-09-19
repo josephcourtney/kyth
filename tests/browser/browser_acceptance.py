@@ -432,9 +432,7 @@ def test_two_tabs_with_distinct_resources_only_update_affected_view(resource_har
 def test_duplicated_tab_session_identity_is_rekeyed(resource_harness: _Harness) -> None:
     harness = resource_harness
     view_id = harness.page.evaluate("() => sessionStorage.getItem('__kyth_view_id__')")
-    sequence = harness.page.evaluate(
-        "() => sessionStorage.getItem('__kyth_registration_sequence__')"
-    )
+    sequence = harness.page.evaluate("() => sessionStorage.getItem('__kyth_registration_sequence__')")
     assert isinstance(view_id, str)
     assert isinstance(sequence, str)
 
