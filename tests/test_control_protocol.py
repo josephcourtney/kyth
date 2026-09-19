@@ -179,6 +179,7 @@ def test_control_service_serves_token_gated_browser_client() -> None:
         assert 'addEventListener("online", reconnectEvents)' in body
         assert "eventSource.close()" in body
         assert "resources_complete" in body
+        assert "registration_sequence" in body
         connection.close()
 
 
@@ -191,6 +192,7 @@ def test_view_registration_accepts_resource_snapshot() -> None:
             "view_id": "resource-view",
             "url": f"{LOOPBACK_ORIGIN}/",
             "generation": 2,
+            "registration_sequence": 7,
             "render_id": None,
             "resources": [
                 {
@@ -218,6 +220,7 @@ def test_view_registration_accepts_resource_snapshot() -> None:
         view = service.views.get("resource-view")
         assert view is not None
         assert view.resources_complete is True
+        assert view.registration_sequence == 7
         assert [(resource.url, resource.kind) for resource in view.resources] == [
             (f"{LOOPBACK_ORIGIN}/logo.svg", BrowserResourceKind.IMAGE),
             (f"{LOOPBACK_ORIGIN}/site.css", BrowserResourceKind.STYLESHEET),
