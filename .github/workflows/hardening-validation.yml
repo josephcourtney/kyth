@@ -36,6 +36,28 @@ jobs:
       - name: strict complexity
         run: uv run just complexity --strict
 
+  lifecycle-matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.12", "3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+      - name: watcher, process, socket, and lifecycle rehearsal
+        run: >-
+          uv run pytest --no-cov --timeout=300
+          tests/test_watcher.py
+          tests/test_process_child.py
+          tests/test_process_manager.py
+          tests/test_lifecycle.py
+
   browser:
     needs: static
     runs-on: ubuntu-latest
