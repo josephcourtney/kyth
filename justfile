@@ -26,8 +26,9 @@ PLAYWRIGHT_BROWSERS_DIR  := REPO_CACHE_DIR + "/playwright"
 RADON_CONFIG             := ROOT_DIR + "/radon.cfg"
 
 PY_SRC      := "src"
-PY_TESTPATH := "tests"
-PY_SCRIPTS  := "scripts"
+PY_TESTPATH      := "tests"
+PY_PROPERTY_TEST := "tests/test_properties.py"
+PY_SCRIPTS       := "scripts"
 
 
 # ======================================================================
@@ -97,6 +98,7 @@ env:
   @echo "PYTHON_PACKAGE={{PYTHON_PACKAGE}}"
   @echo "PY_SRC={{PY_SRC}}"
   @echo "PY_TESTPATH={{PY_TESTPATH}}"
+  @echo "PY_PROPERTY_TEST={{PY_PROPERTY_TEST}}"
   @echo "PY_SCRIPTS={{PY_SCRIPTS}}"
   @echo "UV={{UV}}"
   @echo "RUFF={{RUFF}}"
@@ -570,6 +572,7 @@ test strict="true" fast="false" dev="false" quiet="" logs="" debug="" failing="f
       eval "collect_args+=({{PYTEST_FAILING_OPTS}})"
     fi
 
+    collect_args+=(--ignore="{{ROOT_DIR}}/{{PY_PROPERTY_TEST}}")
     collect_args+=("${test_paths[@]}")
 
     set +e
@@ -592,6 +595,9 @@ test strict="true" fast="false" dev="false" quiet="" logs="" debug="" failing="f
     fi
   fi
 
+  # Run the ordinary suite without the property module so pytest can retain
+  # assertion rewriting and its normal rich diagnostics everywhere else.
+  args+=(--ignore="{{ROOT_DIR}}/{{PY_PROPERTY_TEST}}")
   args+=("${test_paths[@]}")
 
   printf '[test]'
@@ -600,8 +606,49 @@ test strict="true" fast="false" dev="false" quiet="" logs="" debug="" failing="f
 
   set +e
   "${args[@]}"
-  status=$?
+  ordinary_status=$?
   set -e
+
+  # Hypothesis lazily imports implementation modules while generated examples
+  # execute. Pytest assertion rewriting reads/writes rewritten bytecode for
+  # those late imports, which conflicts with strict SMALL filesystem
+  # isolation. Run only the pure property module with plain assertions.
+  property_args=({{PYTEST}})
+  property_args+=(--assert=plain)
+  property_args+=(--timeout="{{PYTEST_TIMEOUT}}")
+
+  if [ "{{dev}}" = "true" ]; then
+    property_args+=(--no-cov)
+  else
+    property_args+=(--cov="{{PYTHON_PACKAGE}}" --cov-append)
+  fi
+
+  if [ -n "$mode_flags" ]; then
+    eval "property_args+=($mode_flags)"
+  fi
+
+  if [ "{{fast}}" = "true" ]; then
+    eval "property_args+=({{PYTEST_FAST_OPTS}})"
+  fi
+
+  if [ "{{failing}}" = "true" ]; then
+    eval "property_args+=({{PYTEST_FAILING_OPTS}})"
+  fi
+
+  property_args+=("{{ROOT_DIR}}/{{PY_PROPERTY_TEST}}")
+
+  printf '[property-test]'
+  printf ' %q' "${property_args[@]}"
+  printf '\n'
+
+  set +e
+  PYTHONDONTWRITEBYTECODE=1 "${property_args[@]}"
+  property_status=$?
+  set -e
+
+  status=0
+  if [ "$ordinary_status" -ne 0 ]; then status="$ordinary_status"; fi
+  if [ "$property_status" -ne 0 ] && [ "$status" -eq 0 ]; then status="$property_status"; fi
 
   if [ "{{strict}}" = "true" ]; then
     exit "$status"
@@ -612,6 +659,27 @@ test strict="true" fast="false" dev="false" quiet="" logs="" debug="" failing="f
   fi
 
   exit 0
+
+
+# Run only the Hypothesis property layer with plain assertion imports.
+#
+# This avoids pytest's assertion-rewrite bytecode cache during Hypothesis'
+# lazy imports while retaining strict SMALL resource isolation.
+[group('testing')]
+property-test:
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  just _log_start property-test
+  just _cache_dirs
+
+  PYTHONDONTWRITEBYTECODE=1 {{PYTEST}} \
+    --assert=plain \
+    --timeout="{{PYTEST_TIMEOUT}}" \
+    --no-cov \
+    "{{ROOT_DIR}}/{{PY_PROPERTY_TEST}}"
+
+  just _log_end property-test
 
 
 # Install the pinned Chromium and Firefox builds used by browser acceptance.
