@@ -51,18 +51,24 @@ class ViewRegistry:
         resources_complete: bool | None = None,
     ) -> BrowserView:
         now = self._clock()
-        view = BrowserView(
-            view_id,
-            url,
-            generation,
-            render_id,
-            now,
-            resources,
-            resources_complete,
-        )
         with self._lock:
+            current = self._views.get(view_id)
+            if current is not None and generation < current.generation:
+                current = replace(current, last_seen=now)
+                self._views[view_id] = current
+                return current
+
+            view = BrowserView(
+                view_id,
+                url,
+                generation,
+                render_id,
+                now,
+                resources,
+                resources_complete,
+            )
             self._views[view_id] = view
-        return view
+            return view
 
     def ensure(self, view_id: str) -> BrowserView:
         now = self._clock()
