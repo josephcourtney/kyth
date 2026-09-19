@@ -6,7 +6,7 @@ on:
       - rewrite/dev-server-v1
 
 concurrency:
-  group: hardening-validation-${{ github.ref }}
+  group: hardening-validation-v2-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
