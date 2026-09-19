@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TypeVar
 
 from kyth.injection.jinja import record_data_dependency, record_dependency
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 _ReadinessResult = bool | None | Awaitable[bool | None]
 _ReadinessCheck = Callable[[], _ReadinessResult]
