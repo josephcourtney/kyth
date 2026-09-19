@@ -116,7 +116,7 @@ just complexity --strict
 just dup
 ```
 
-Radon is isolated from `pyproject.toml` through `radon.cfg` because Radon 6.0.1 incorrectly feeds pytest percent-style log strings through ConfigParser interpolation.
+Complexity checks use Radon's public Python API through `scripts/complexity.py` rather than Radon's CLI. Radon 6.0.1 eagerly parses `pyproject.toml` through ConfigParser during CLI startup, which conflicts with valid pytest percent-style log strings. The API wrapper bypasses that CLI configuration path and propagates analysis failures instead of masking them.
 
 Coverage is diagnostic rather than a target by itself. Prefer important failure branches and invariant assertions over aggregate percentage.
 

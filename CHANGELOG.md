@@ -27,7 +27,7 @@ Items should be categorized under these headings:
 
 ### Fixed
 
-- isolate Radon 6.0.1 behind a dedicated `radon.cfg` so pytest percent-style logging configuration no longer breaks complexity analysis
+- bypass Radon 6.0.1's faulty CLI configuration loader with a small wrapper around its public Python API, and stop masking complexity-tool failures as successful strict checks
 - run the Hypothesis property layer in a separate plain-assert pytest invocation with an in-memory example database so lazy Hypothesis imports do not violate small-test filesystem isolation while ordinary tests retain assertion rewriting
 - remove an artificial zero-duration sleep from the render-reporting transport-failure test
 

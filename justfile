@@ -23,7 +23,6 @@ RUFF_CACHE_DIR           := REPO_CACHE_DIR + "/ruff"
 IMPORT_LINTER_CACHE_DIR  := REPO_CACHE_DIR + "/import-linter"
 PYTEST_CACHE_DIR         := REPO_CACHE_DIR + "/pytest"
 PLAYWRIGHT_BROWSERS_DIR  := REPO_CACHE_DIR + "/playwright"
-RADON_CONFIG             := ROOT_DIR + "/radon.cfg"
 
 PY_SRC      := "src"
 PY_TESTPATH      := "tests"
@@ -44,7 +43,6 @@ PYTEST               := UV + " run pytest -o cache_dir=" + PYTEST_CACHE_DIR
 TY                   := UV + " run ty"
 SHOWCOV              := UV + " run showcov"
 VULTURE              := UV + " run vulture"
-RADON                := UV + " run radon"
 IMPORT_LINTER        := UV + " run lint-imports --cache-dir " + IMPORT_LINTER_CACHE_DIR
 IMPORT_LINTER_CONFIG := ROOT_DIR + "/import-linter.toml"
 
@@ -106,8 +104,6 @@ env:
   @echo "TY={{TY}}"
   @echo "SHOWCOV={{SHOWCOV}}"
   @echo "VULTURE={{VULTURE}}"
-  @echo "RADON={{RADON}}"
-  @echo "RADON_CONFIG={{RADON_CONFIG}}"
   @echo "IMPORT_LINTER={{IMPORT_LINTER}}"
   @echo "JSCPD={{JSCPD}}"
   @{{UV}} --version || true
@@ -383,6 +379,11 @@ dead-code:
 
 
 # Report complexity; use --raw for raw metrics or --strict to enforce a ceiling.
+#
+# Use Radon's library API through scripts/complexity.py instead of the Radon
+# CLI. Radon 6.0.1 eagerly parses pyproject.toml through ConfigParser and can
+# fail on valid percent-style pytest log formats before command-line/config
+# overrides take effect.
 [group('code quality')]
 [arg("raw", long, value="true")]
 [arg("strict", long, value="true")]
@@ -398,17 +399,12 @@ complexity raw="false" strict="false" min_complexity="11":
   fi
 
   if [ "{{raw}}" = "true" ]; then
-    RADONCFG="{{RADON_CONFIG}}" {{RADON}} raw "{{PY_SRC}}"
+    {{PYTHON}} "{{ROOT_DIR}}/scripts/complexity.py" raw "{{PY_SRC}}"
   elif [ "{{strict}}" = "true" ]; then
     echo "[complexity] failing if any block has complexity >= {{min_complexity}}"
-    output="$(RADONCFG="{{RADON_CONFIG}}" {{RADON}} cc -s -n "{{min_complexity}}" "{{PY_SRC}}" || true)"
-    if [ -n "$output" ]; then
-      echo "$output"
-      exit 1
-    fi
-    echo "[complexity] all blocks are below {{min_complexity}}"
+    {{PYTHON}} "{{ROOT_DIR}}/scripts/complexity.py" strict       --threshold "{{min_complexity}}"       "{{PY_SRC}}"
   else
-    RADONCFG="{{RADON_CONFIG}}" {{RADON}} cc -s -a "{{PY_SRC}}"
+    {{PYTHON}} "{{ROOT_DIR}}/scripts/complexity.py" report "{{PY_SRC}}"
   fi
 
   just _log_end complexity
