@@ -124,11 +124,12 @@ class _ControlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)}, origin=origin)
             return
 
-        view_id, url, generation, render_id, resources, resources_complete = registration
+        view_id, url, generation, registration_sequence, render_id, resources, resources_complete = registration
         view = self._state.views.register(
             view_id=view_id,
             url=url,
             generation=generation,
+            registration_sequence=registration_sequence,
             render_id=render_id,
             resources=resources,
             resources_complete=resources_complete,
@@ -447,11 +448,12 @@ def _optional_string(payload: dict[str, object], key: str) -> str | None:
 
 def _view_registration(
     payload: dict[str, object],
-) -> tuple[str, str, int, str | None, tuple[BrowserResource, ...], bool | None]:
+) -> tuple[str, str, int, int, str | None, tuple[BrowserResource, ...], bool | None]:
     return (
         _required_string(payload, "view_id"),
         _required_string(payload, "url"),
         _required_nonnegative_int(payload, "generation"),
+        _optional_nonnegative_int(payload, "registration_sequence") or 0,
         _optional_string(payload, "render_id"),
         _resources(payload),
         _optional_bool(payload, "resources_complete"),
@@ -636,6 +638,7 @@ def _view_payload(view: BrowserView) -> dict[str, object]:
         "view_id": view.view_id,
         "url": view.url,
         "generation": view.generation,
+        "registration_sequence": view.registration_sequence,
         "render_id": view.render_id,
         "resources": [{"url": resource.url, "kind": resource.kind.value} for resource in view.resources],
         "resources_complete": view.resources_complete,
