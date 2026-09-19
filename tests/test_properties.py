@@ -234,36 +234,47 @@ _VIEW_SYNC_OPERATION = st.tuples(
     st.sampled_from(("register", "mark-current", "ensure", "touch")),
     _VIEW_ID,
     st.integers(min_value=0, max_value=20),
+    st.integers(min_value=0, max_value=40),
     _COMPONENT,
 )
 
 
 @given(st.lists(_VIEW_SYNC_OPERATION, max_size=40))
 def test_view_registry_matches_reference_model_across_interleavings(
-    operations: list[tuple[str, str, int, str]],
+    operations: list[tuple[str, str, int, int, str]],
 ) -> None:
     registry = ViewRegistry(inactivity_timeout=10.0, clock=lambda: 1.0)
-    expected: dict[str, tuple[int, str]] = {}
+    expected: dict[str, tuple[int, int, str]] = {}
 
-    for operation, view_id, generation, url_component in operations:
+    for operation, view_id, generation, registration_sequence, url_component in operations:
         if operation == "register":
             url = f"http://127.0.0.1/{url_component}"
             current = expected.get(view_id)
-            registry.register(view_id=view_id, url=url, generation=generation)
-            if current is None or generation >= current[0]:
-                expected[view_id] = (generation, url)
+            registry.register(
+                view_id=view_id,
+                url=url,
+                generation=generation,
+                registration_sequence=registration_sequence,
+            )
+            if current is None or generation > current[0] or (
+                generation == current[0] and registration_sequence >= current[1]
+            ):
+                expected[view_id] = (generation, registration_sequence, url)
         elif operation == "mark-current":
             registry.set_generation((view_id,), generation)
             current = expected.get(view_id)
             if current is not None and generation >= current[0]:
-                expected[view_id] = (generation, current[1])
+                expected[view_id] = (generation, current[1], current[2])
         elif operation == "ensure":
             registry.ensure(view_id)
-            expected.setdefault(view_id, (0, ""))
+            expected.setdefault(view_id, (0, 0, ""))
         else:
             registry.touch(view_id)
 
-        actual = {view.view_id: (view.generation, view.url) for view in registry.snapshot()}
+        actual = {
+            view.view_id: (view.generation, view.registration_sequence, view.url)
+            for view in registry.snapshot()
+        }
         assert actual == expected
 
 
