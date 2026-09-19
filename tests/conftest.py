@@ -20,6 +20,7 @@ def _warm_hypothesis(value: None) -> None:
     assert value is None
 
 
-def pytest_sessionstart(_session: pytest.Session) -> None:
+def pytest_sessionstart(session: pytest.Session) -> None:
     """Initialize Hypothesis while the test-category filesystem blocker is inactive."""
+    del session
     _warm_hypothesis()
