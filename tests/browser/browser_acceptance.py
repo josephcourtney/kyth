@@ -429,6 +429,31 @@ def test_two_tabs_with_distinct_resources_only_update_affected_view(resource_har
     assert other.evaluate("() => getComputedStyle(document.body).color") == "rgb(20, 30, 40)"
 
 
+def test_duplicated_tab_session_identity_is_rekeyed(resource_harness: _Harness) -> None:
+    harness = resource_harness
+    view_id = harness.page.evaluate("() => sessionStorage.getItem('__kyth_view_id__')")
+    sequence = harness.page.evaluate(
+        "() => sessionStorage.getItem('__kyth_registration_sequence__')"
+    )
+    assert isinstance(view_id, str)
+    assert isinstance(sequence, str)
+
+    duplicate = harness.context.new_page()
+    duplicate.goto(f"{harness.origin}/app.js", wait_until="load")
+    duplicate.evaluate(
+        f"""() => {{
+            sessionStorage.setItem('__kyth_view_id__', {view_id!r});
+            sessionStorage.setItem('__kyth_registration_sequence__', {sequence!r});
+        }}"""
+    )
+    duplicate.goto(harness.origin, wait_until="load")
+    _wait_for_complete_views(harness.supervisor, 2)
+
+    duplicate_view_id = duplicate.evaluate("() => sessionStorage.getItem('__kyth_view_id__')")
+    assert isinstance(duplicate_view_id, str)
+    assert duplicate_view_id != view_id
+
+
 def test_dynamic_dom_resource_is_registered_and_then_updates_narrowly(
     resource_harness: _Harness,
 ) -> None:
