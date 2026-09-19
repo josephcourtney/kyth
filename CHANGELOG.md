@@ -31,6 +31,9 @@ Items should be categorized under these headings:
 - add targeted `data-update` and non-navigating `server-error` control events
 - add `kyth:data-update`, `kyth:server-error`, `kyth:before-reload`, and `kyth:restore-state` browser integration events
 - add synchronous/asynchronous `register_readiness_check` application readiness hooks
+- add hardening coverage for registration ordering, duplicate tabs, reconnect/restart races, generated-output deletion and partial rebuilds, and atomic-save watcher behavior
+- add a macOS/Linux lifecycle rehearsal matrix across Python 3.12-3.14
+- add a narrow `just mutation` diagnostic for change-classification and protocol policy
 
 ### Changed
 
@@ -38,6 +41,10 @@ Items should be categorized under these headings:
 - apply development `Cache-Control: no-store` semantics to Kyth-managed ASGI responses so reloads cannot be masked by immutable caches
 - narrow generated-source deferral to the outputs that actually depend on each source
 - close the browser EventSource while offline and require a fresh sync after connectivity returns
+- make browser registrations monotonic by generation and registration sequence so delayed asynchronous registrations cannot replace newer view snapshots
+- rekey duplicated-tab view identities when two live documents inherit the same tab-scoped identifier
+- strengthen filesystem duplicate detection with change-time and file-identity metadata so atomic replacements are not suppressed solely because size and modification time match
+- bound per-browser SSE queues and disconnect slow subscribers on overflow so reconnect synchronization replaces unbounded pending-event growth
 
 ### Fixed
 
@@ -47,6 +54,8 @@ Items should be categorized under these headings:
 - run the Hypothesis property layer in a separate plain-assert pytest invocation with an in-memory example database so lazy Hypothesis imports do not violate small-test filesystem isolation while ordinary tests retain assertion rewriting
 - remove an artificial zero-duration sleep from the render-reporting transport-failure test
 - explicitly reopen the browser EventSource when connectivity returns so stale views always receive a fresh generation sync instead of depending on browser-specific automatic reconnect timing
+- open the browser control EventSource before publishing the first view registration so an edit cannot land in the registration-before-SSE gap and force a conservative reload
+- keep unreconstructed generated sibling outputs stale when a shared source changes and only one output has rebuilt
 
 ## [0.2.0] - 2026-09-18
 
