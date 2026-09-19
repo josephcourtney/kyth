@@ -191,6 +191,7 @@ def manifest_harness(
 ) -> Iterator[_Harness]:
     _seed_resource_fixture(tmp_path)
     tmp_path.joinpath("content.md").write_text("first", encoding="utf-8")
+    tmp_path.joinpath("generator.py").write_text("VERSION = 1\n", encoding="utf-8")
     tmp_path.joinpath("generated.html").write_text(
         _page("generated-one"),
         encoding="utf-8",
@@ -203,7 +204,7 @@ def manifest_harness(
                 {
                     "output": "generated.html",
                     "url": "/generated/",
-                    "sources": ["content.md"],
+                    "sources": ["content.md", "generator.py"],
                 }
             ],
         }),
@@ -801,6 +802,41 @@ def test_unhandled_semantic_data_update_falls_back_to_reload(
 
     harness.page.wait_for_function(
         "() => window.__kythSentinel === undefined",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+
+
+def test_restart_worthy_generated_source_waits_for_output_after_child_ready(
+    manifest_harness: _Harness,
+) -> None:
+    harness = manifest_harness
+    _set_sentinel(harness.page, "keep")
+    source = harness.asset("generator.py")
+    output = harness.asset("generated.html")
+    generation = harness.supervisor.state.generation + 1
+    source.write_text("VERSION = 2\n", encoding="utf-8")
+
+    harness.supervisor._handle_change_cycle(
+        FileBatch.from_events([FileEvent(source, FileOperation.MODIFIED)]),
+        _NoPendingBatches(),
+    )
+
+    assert harness.supervisor.state.generation == generation
+    _wait_for_generation(harness.supervisor, generation)
+    assert _sentinel(harness.page) == "keep"
+    assert output.resolve() in harness.supervisor._generated.stale_outputs
+
+    output.write_text(_page("generated-after-restart"), encoding="utf-8")
+    harness.supervisor._handle_change_cycle(
+        FileBatch.from_events([FileEvent(output, FileOperation.MODIFIED)]),
+        _NoPendingBatches(),
+    )
+
+    harness.page.wait_for_function(
+        """() =>
+            document.querySelector('#status').textContent === 'generated-after-restart' &&
+            window.__kythSentinel === undefined
+        """,
         timeout=BROWSER_TIMEOUT_MS,
     )
 
