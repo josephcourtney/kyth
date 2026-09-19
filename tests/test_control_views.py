@@ -96,3 +96,42 @@ def test_stale_registration_cannot_overwrite_newer_view_state() -> None:
     assert returned.resources_complete is True
     assert returned.last_seen == pytest.approx(2.0)
     assert registry.get("view") == returned
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_older_same_generation_registration_cannot_replace_newer_snapshot() -> None:
+    registry = ViewRegistry(inactivity_timeout=5.0, clock=lambda: 1.0)
+    complete_resource = BrowserResource(
+        "http://127.0.0.1/current.css",
+        BrowserResourceKind.STYLESHEET,
+    )
+    incomplete_resource = BrowserResource(
+        "http://127.0.0.1/stale.css",
+        BrowserResourceKind.STYLESHEET,
+    )
+    registry.register(
+        view_id="view",
+        url="http://127.0.0.1/current",
+        generation=4,
+        registration_sequence=2,
+        render_id="render-current",
+        resources=(complete_resource,),
+        resources_complete=True,
+    )
+
+    returned = registry.register(
+        view_id="view",
+        url="http://127.0.0.1/stale",
+        generation=4,
+        registration_sequence=1,
+        render_id="render-stale",
+        resources=(incomplete_resource,),
+        resources_complete=False,
+    )
+
+    assert returned.registration_sequence == 2
+    assert returned.url == "http://127.0.0.1/current"
+    assert returned.render_id == "render-current"
+    assert returned.resources == (complete_resource,)
+    assert returned.resources_complete is True
