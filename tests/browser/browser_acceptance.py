@@ -353,7 +353,7 @@ def test_failed_replacement_startup_does_not_reload_until_ready(
 
     assert not harness.supervisor.restart_child()
     harness.page.wait_for_function(
-        "() => typeof window.__kythServerError === "string" && window.__kythServerError.length > 0",
+        "() => typeof window.__kythServerError === 'string' && window.__kythServerError.length > 0",
         timeout=BROWSER_TIMEOUT_MS,
     )
     assert harness.supervisor.state.generation == generation
