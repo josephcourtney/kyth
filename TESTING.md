@@ -28,7 +28,7 @@ Hypothesis properties run in the default suite and are marked `property_based` p
 
 Property tests stay in pure state/policy layers. Filesystem/process fuzzing is separate robustness work.
 
-Hypothesis lazily imports its execution engine and normally uses a filesystem-backed example database. The test harness warms the public Hypothesis execution path during pytest session setup, before per-test isolation begins, and uses an in-memory example database. This keeps property tests truthfully `small` without granting them filesystem exceptions. Regressions that must persist across runs should be promoted to explicit `@example` cases.
+Hypothesis lazily imports parts of its execution engine while generated examples run, and pytest's assertion-rewrite importer normally writes rewritten bytecode for such imports. The test harness disables bytecode writes in the pytest process via `sys.dont_write_bytecode` and uses an in-memory Hypothesis example database. This keeps genuinely pure property tests truthfully `small` without granting filesystem exceptions or relying on brittle eager imports of Hypothesis internals. Regressions that must persist across runs should be promoted to explicit `@example` cases.
 
 ## Hermetic fault injection
 
