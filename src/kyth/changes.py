@@ -34,6 +34,18 @@ BROWSER_SUFFIXES = frozenset({
 RESTART_FILENAMES = frozenset({"pyproject.toml"})
 
 
+@dataclass(frozen=True, slots=True)
+class ChangePolicy:
+    """Configurable additions to Kyth's conservative default change policy."""
+
+    restart_patterns: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if any(not pattern.strip() for pattern in self.restart_patterns):
+            msg = "restart patterns must be non-empty"
+            raise ValueError(msg)
+
+
 class ChangeEffect(StrEnum):
     SERVER_RESTART = "server-restart"
     BROWSER_CHANGE = "browser-change"
@@ -68,15 +80,21 @@ class ChangeSet:
         return tuple(item.path for item in self.paths if item.effect is ChangeEffect.OTHER)
 
 
-def classify_batch(batch: FileBatch) -> ChangeSet:
-    classified = tuple(ClassifiedPath(path=path, effect=classify_path(path)) for path in batch.paths)
+def classify_batch(batch: FileBatch, *, policy: ChangePolicy | None = None) -> ChangeSet:
+    active_policy = policy or ChangePolicy()
+    classified = tuple(
+        ClassifiedPath(path=path, effect=classify_path(path, policy=active_policy)) for path in batch.paths
+    )
     return ChangeSet(batch=batch, paths=classified)
 
 
-def classify_path(path: Path) -> ChangeEffect:
+def classify_path(path: Path, *, policy: ChangePolicy | None = None) -> ChangeEffect:
+    active_policy = policy or ChangePolicy()
     if path.suffix.lower() in PYTHON_SUFFIXES:
         return ChangeEffect.SERVER_RESTART
     if path.name in RESTART_FILENAMES or _is_environment_file(path.name):
+        return ChangeEffect.SERVER_RESTART
+    if any(path.match(pattern) for pattern in active_policy.restart_patterns):
         return ChangeEffect.SERVER_RESTART
     if path.suffix.lower() in BROWSER_SUFFIXES:
         return ChangeEffect.BROWSER_CHANGE

@@ -22,6 +22,8 @@ def test_parser_accepts_target_host_port_watch_paths_and_control_port() -> None:
         "generated",
         "--manifest",
         "build/kyth-manifest.json",
+        "--restart-on",
+        "config/*.yaml",
         "--control-port",
         "8765",
     ])
@@ -32,4 +34,5 @@ def test_parser_accepts_target_host_port_watch_paths_and_control_port() -> None:
     assert args.watch_roots == [Path("src"), Path("templates")]
     assert args.ignored_paths == [Path("generated")]
     assert args.manifest_paths == [Path("build/kyth-manifest.json")]
+    assert args.restart_patterns == ["config/*.yaml"]
     assert args.control_port == 8765

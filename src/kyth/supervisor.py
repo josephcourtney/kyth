@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
-from kyth.changes import ChangeSet, classify_batch
+from kyth.changes import ChangePolicy, ChangeSet, classify_batch
 from kyth.control import ControlService
 from kyth.invalidation import BrowserActionKind, BrowserUpdateDecision, decide_browser_updates
 from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch, FileOperation
@@ -46,6 +46,7 @@ class SupervisorConfig:
     view_inactivity_timeout: float = 300.0
     generation_update_timeout: float = 2.0
     manifest_paths: tuple[Path, ...] = ()
+    restart_patterns: tuple[str, ...] = ()
 
 
 class Supervisor:
@@ -64,6 +65,7 @@ class Supervisor:
         self._direct_resources = DirectResourceIndex(roots)
         self._render_provenance = RenderProvenanceIndex()
         self._generated = GeneratedManifestIndex(config.manifest_paths)
+        self._change_policy = ChangePolicy(config.restart_patterns)
 
     @property
     def address(self) -> tuple[str, int]:
@@ -250,7 +252,7 @@ class Supervisor:
             self._refresh_provenance()
             self._refresh_changed_manifests(batch.paths)
             stale_outputs = self._generated.mark_sources_changed(batch.paths)
-            changes = classify_batch(batch)
+            changes = classify_batch(batch, policy=self._change_policy)
             relevant_paths = self._relevant_browser_paths(changes)
             self._log_change_set(changes, relevant_paths, stale_outputs)
             self._generated.mark_outputs_updated(relevant_paths)

@@ -46,6 +46,14 @@ def _parser() -> argparse.ArgumentParser:
         help="generated dependency manifest; may be repeated",
     )
     parser.add_argument(
+        "--restart-on",
+        dest="restart_patterns",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="additional path pattern that requires application restart; may be repeated",
+    )
+    parser.add_argument(
         "--control-port",
         type=int,
         default=0,
@@ -68,6 +76,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
         ignored_paths=tuple(args.ignored_paths),
         control_port=args.control_port,
         manifest_paths=tuple(args.manifest_paths),
+        restart_patterns=tuple(args.restart_patterns),
     )
 
     with Supervisor(config) as supervisor, contextlib.suppress(KeyboardInterrupt):
