@@ -189,6 +189,23 @@
   ]
 
 
+
+# =================================== test:mutation ===================================
+[tool.mutmut]
+  source_paths = ["src/kyth"]
+  only_mutate = [
+    "src/kyth/changes.py",
+    "src/kyth/protocol.py",
+  ]
+  pytest_add_cli_args = ["--no-cov", "-q"]
+  pytest_add_cli_args_test_selection = [
+    "tests/test_changes.py",
+    "tests/test_control_protocol.py",
+    "tests/test_properties.py",
+  ]
+
+
+
 # =================================== test:coverage ===================================
 [tool.coverage.run]
   core      = "ctrace"
