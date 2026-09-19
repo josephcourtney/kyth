@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
@@ -23,6 +22,7 @@ from kyth.provenance import (
 from kyth.watcher import BatchDeduplicator, BatchSource, FileWatcher, WatcherConfig
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     import socket
     from multiprocessing.context import SpawnContext
     from types import TracebackType
