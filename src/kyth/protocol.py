@@ -42,3 +42,12 @@ class ControlEvent:
     @classmethod
     def asset_update(cls, generation: int, *, resources: tuple[str, ...]) -> ControlEvent:
         return cls(ControlEventKind.ASSET_UPDATE, generation, {"resources": list(resources)})
+
+    @classmethod
+    def data_update(cls, generation: int, *, identities: tuple[str, ...]) -> ControlEvent:
+        return cls(ControlEventKind.DATA_UPDATE, generation, {"identities": list(identities)})
+
+    @classmethod
+    def server_error(cls, generation: int, *, message: str) -> ControlEvent:
+        return cls(ControlEventKind.SERVER_ERROR, generation, {"message": message})
+

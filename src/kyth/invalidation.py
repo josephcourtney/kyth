@@ -68,6 +68,7 @@ class BrowserActionKind(StrEnum):
     RELOAD = "reload"
     CSS_UPDATE = "css-update"
     ASSET_UPDATE = "asset-update"
+    DATA_UPDATE = "data-update"
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +76,7 @@ class BrowserAction:
     view_id: str
     kind: BrowserActionKind
     resource_urls: tuple[str, ...] = ()
+    data_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,10 +100,13 @@ def decide_browser_updates(
     resource_views: Mapping[Path, Mapping[str, Collection[BrowserResource]]],
     complete_resource_view_ids: Collection[str],
     active_view_ids: Collection[str],
+    known_data_sources: Collection[Path] = (),
+    data_source_views: Mapping[Path, Mapping[str, Collection[str]]] | None = None,
 ) -> BrowserUpdateDecision:
     """Choose one coherent browser action per view for a stable change batch."""
     paths = tuple(sorted(set(changed_paths), key=Path.as_posix))
     active = set(active_view_ids)
+    data_views = {} if data_source_views is None else data_source_views
     if not paths:
         return BrowserUpdateDecision((), (), tuple(sorted(active)), "no-browser-change")
 
@@ -109,12 +114,14 @@ def decide_browser_updates(
         paths,
         known_outputs=known_outputs,
         known_render_sources=known_render_sources,
+        known_data_sources=known_data_sources,
     )
     if _contains_unknown_paths(
         content_paths,
         resource_paths,
         known_outputs=known_outputs,
         known_render_sources=known_render_sources,
+        known_data_sources=known_data_sources,
         known_resources=known_resources,
     ):
         return _reload_all(paths, active, reason="ambiguous-browser-dependency")
@@ -130,6 +137,8 @@ def decide_browser_updates(
         render_source_views=render_source_views,
         complete_render_view_ids=complete_render_view_ids,
         deferred_source_views=deferred_source_views,
+        known_data_sources=known_data_sources,
+        data_source_views=data_views,
     )
     _merge_resource_actions(
         actions,
@@ -155,8 +164,9 @@ def _split_paths(
     *,
     known_outputs: Collection[Path],
     known_render_sources: Collection[Path],
+    known_data_sources: Collection[Path],
 ) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
-    content_known = set(known_outputs) | set(known_render_sources)
+    content_known = set(known_outputs) | set(known_render_sources) | set(known_data_sources)
     content = tuple(path for path in paths if path.suffix.lower() in HTML_SUFFIXES or path in content_known)
     content_set = set(content)
     resources = tuple(path for path in paths if path not in content_set)
@@ -169,9 +179,10 @@ def _contains_unknown_paths(
     *,
     known_outputs: Collection[Path],
     known_render_sources: Collection[Path],
+    known_data_sources: Collection[Path],
     known_resources: Collection[Path],
 ) -> bool:
-    known_content = set(known_outputs) | set(known_render_sources)
+    known_content = set(known_outputs) | set(known_render_sources) | set(known_data_sources)
     known_resource_paths = set(known_resources)
     return any(path not in known_content for path in content_paths) or any(
         path not in known_resource_paths for path in resource_paths
@@ -189,9 +200,12 @@ def _merge_content_actions(
     render_source_views: Mapping[Path, Collection[str]],
     complete_render_view_ids: Collection[str],
     deferred_source_views: Mapping[Path, Collection[str]],
+    known_data_sources: Collection[Path],
+    data_source_views: Mapping[Path, Mapping[str, Collection[str]]],
 ) -> None:
     known_output_paths = set(known_outputs)
     known_render_paths = set(known_render_sources)
+    known_data_paths = set(known_data_sources)
     direct_views = {view_id for view_ids in output_views.values() for view_id in view_ids} & active
     complete_render_views = set(complete_render_view_ids) & active
 
@@ -204,6 +218,18 @@ def _merge_content_actions(
         if path in known_render_paths:
             precise.update(complete_render_views)
             affected.update(render_source_views.get(path, ()))
+        if path in known_data_paths:
+            precise.update(complete_render_views)
+            for view_id, identities in data_source_views.get(path, {}).items():
+                if view_id in active:
+                    _merge_action(
+                        actions,
+                        BrowserAction(
+                            view_id,
+                            BrowserActionKind.DATA_UPDATE,
+                            data_ids=tuple(sorted(set(identities))),
+                        ),
+                    )
         precise.update(deferred_source_views.get(path, ()))
 
         for view_id in (affected & active) | (active - precise):
@@ -265,6 +291,7 @@ def _merge_action(actions: dict[str, BrowserAction], candidate: BrowserAction) -
         candidate.view_id,
         candidate.kind,
         tuple(sorted(set(current.resource_urls) | set(candidate.resource_urls))),
+        tuple(sorted(set(current.data_ids) | set(candidate.data_ids))),
     )
 
 

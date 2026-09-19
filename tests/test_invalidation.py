@@ -288,3 +288,54 @@ def test_manifest_generated_views_are_deferred_for_shared_render_source() -> Non
 
     assert [(action.view_id, action.kind) for action in decision.actions] == [("dynamic", BrowserActionKind.RELOAD)]
     assert decision.current_view_ids == ("generated",)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_semantic_data_dependency_uses_data_update_for_dependent_view() -> None:
+    data = Path("/project/data/inventory.json")
+    decision = decide_browser_updates(
+        (data,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids={"inventory", "other"},
+        deferred_source_views={},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"inventory", "other"},
+        known_data_sources={data},
+        data_source_views={data: {"inventory": ("inventory",)}},
+    )
+
+    assert [(action.view_id, action.kind, action.data_ids) for action in decision.actions] == [
+        ("inventory", BrowserActionKind.DATA_UPDATE, ("inventory",)),
+    ]
+    assert decision.current_view_ids == ("other",)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_mixed_template_and_data_dependency_falls_back_to_reload() -> None:
+    data = Path("/project/data/inventory.json")
+    decision = decide_browser_updates(
+        (data,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources={data},
+        render_source_views={data: ("view",)},
+        complete_render_view_ids={"view"},
+        deferred_source_views={},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"view"},
+        known_data_sources={data},
+        data_source_views={data: {"view": ("inventory",)}},
+    )
+
+    assert [(action.view_id, action.kind) for action in decision.actions] == [
+        ("view", BrowserActionKind.RELOAD),
+    ]

@@ -42,12 +42,19 @@ class SourceVersion:
 
 
 @dataclass(frozen=True, slots=True)
+class DataDependency:
+    identity: str
+    source: SourceVersion
+
+
+@dataclass(frozen=True, slots=True)
 class RenderRecord:
     render_id: str
     generation: int
     dependencies: tuple[SourceVersion, ...]
     complete: bool
     adapter: str
+    data_dependencies: tuple[DataDependency, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

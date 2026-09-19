@@ -62,6 +62,15 @@ def _render_payload(record: RenderRecord) -> dict[str, object]:
         "generation": record.generation,
         "complete": record.complete,
         "adapter": record.adapter,
+        "data_dependencies": [
+            {
+                "identity": dependency.identity,
+                "path": dependency.source.path,
+                "mtime_ns": dependency.source.mtime_ns,
+                "size": dependency.source.size,
+            }
+            for dependency in record.data_dependencies
+        ],
         "dependencies": [
             {
                 "path": dependency.path,

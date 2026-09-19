@@ -227,6 +227,14 @@ def test_render_registration_stores_generic_provenance_record() -> None:
             "generation": 3,
             "complete": True,
             "adapter": "jinja",
+            "data_dependencies": [
+                {
+                    "identity": "inventory",
+                    "path": "/data/inventory.json",
+                    "mtime_ns": 12,
+                    "size": 42,
+                }
+            ],
             "dependencies": [
                 {
                     "path": "/templates/base.html",
@@ -255,7 +263,22 @@ def test_render_registration_stores_generic_provenance_record() -> None:
         assert record is not None
         assert record.adapter == "jinja"
         assert record.complete
+        assert [(item.identity, item.source.path) for item in record.data_dependencies] == [
+            ("inventory", "/data/inventory.json"),
+        ]
         assert [dependency.path for dependency in record.dependencies] == [
             "/templates/base.html",
             "/templates/page.html",
         ]
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_data_update_and_server_error_events_have_structured_payloads() -> None:
+    data = ControlEvent.data_update(8, identities=("inventory", "prices"))
+    error = ControlEvent.server_error(7, message="startup failed")
+
+    assert data.kind.value == "data-update"
+    assert data.data == {"identities": ["inventory", "prices"]}
+    assert error.kind.value == "server-error"
+    assert error.data == {"message": "startup failed"}

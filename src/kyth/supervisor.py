@@ -264,6 +264,7 @@ class Supervisor:
                 exit_code=result.exit_code if result.exit_code is not None else exit_code,
             ),
         )
+        control.publish(ControlEvent.server_error(self.state.generation, message=error))
         logger.error("application startup failed: %s", error)
         return False
 
@@ -393,7 +394,7 @@ class Supervisor:
             normalized,
             known_outputs=self._direct_outputs.known_outputs | self._generated.known_outputs,
             output_views=output_views,
-            known_render_sources=self._render_provenance.known_sources,
+            known_render_sources=self._render_provenance.known_render_sources,
             render_source_views=self._render_provenance.stale_source_views(normalized),
             complete_render_view_ids=self._render_provenance.complete_view_ids,
             deferred_source_views=self._generated_source_views(generated_output_views),
@@ -401,6 +402,8 @@ class Supervisor:
             resource_views=self._direct_resources.resource_views,
             complete_resource_view_ids=self._direct_resources.complete_view_ids,
             active_view_ids=tuple(view.view_id for view in views),
+            known_data_sources=self._render_provenance.known_data_sources,
+            data_source_views=self._render_provenance.stale_data_source_views(normalized),
         )
 
     def _publish_browser_decision(
@@ -420,8 +423,10 @@ class Supervisor:
                 event = ControlEvent.reload(generation, reason=decision.reason)
             elif action.kind is BrowserActionKind.CSS_UPDATE:
                 event = ControlEvent.css_update(generation, resources=action.resource_urls)
-            else:
+            elif action.kind is BrowserActionKind.ASSET_UPDATE:
                 event = ControlEvent.asset_update(generation, resources=action.resource_urls)
+            else:
+                event = ControlEvent.data_update(generation, identities=action.data_ids)
             control.publish(event, view_ids=(action.view_id,))
 
     def _refresh_provenance(self) -> None:
@@ -546,7 +551,10 @@ class Supervisor:
             report.restart_succeeded,
             tuple(path.as_posix() for path in report.invalidated_outputs),
             report.affected_view_ids,
-            tuple((action.view_id, action.kind.value, action.resource_urls) for action in report.browser_actions),
+            tuple(
+                (action.view_id, action.kind.value, action.resource_urls, action.data_ids)
+                for action in report.browser_actions
+            ),
             report.generation,
             report.reason,
         )

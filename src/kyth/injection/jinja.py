@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, cast
 
-from kyth.model import RenderRecord, SourceVersion
+from kyth.model import DataDependency, RenderRecord, SourceVersion
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -25,6 +25,7 @@ class RenderTrace:
     generation: int
     dependencies: dict[str, SourceVersion] = field(default_factory=dict)
     adapters: set[str] = field(default_factory=set)
+    data_dependencies: dict[tuple[str, str], DataDependency] = field(default_factory=dict)
     complete: bool = True
     used: bool = False
 
@@ -46,15 +47,19 @@ class RenderTrace:
         """Record one explicit filesystem dependency using the normal source-version model."""
         self.used = True
         self.adapters.add(adapter)
-        resolved = Path(path).expanduser().resolve(strict=False)
-        try:
-            stat = resolved.stat()
-        except OSError:
+        version, complete = _source_version(path)
+        if not complete:
             self.complete = False
-            version = SourceVersion(str(resolved), None, None)
-        else:
-            version = SourceVersion(str(resolved), stat.st_mtime_ns, stat.st_size)
-        self.dependencies[str(resolved)] = version
+        self.dependencies[version.path] = version
+
+    def record_data(self, identity: str, path: str | Path) -> None:
+        """Record one semantic browser-data dependency."""
+        self.used = True
+        self.adapters.add("data")
+        version, complete = _source_version(path)
+        if not complete:
+            self.complete = False
+        self.data_dependencies[(identity, version.path)] = DataDependency(identity, version)
 
     def to_record(self) -> RenderRecord:
         """Freeze this request trace into the adapter-neutral provenance model."""
@@ -65,6 +70,9 @@ class RenderTrace:
             dependencies=tuple(sorted(self.dependencies.values(), key=lambda item: item.path)),
             complete=self.complete,
             adapter=adapter,
+            data_dependencies=tuple(
+                sorted(self.data_dependencies.values(), key=lambda item: (item.identity, item.source.path))
+            ),
         )
 
 
@@ -88,6 +96,15 @@ def record_dependency(path: str | Path) -> bool:
     if trace is None:
         return False
     trace.record_path(path, adapter="explicit")
+    return True
+
+
+def record_data_dependency(identity: str, path: str | Path) -> bool:
+    """Attach semantic data provenance to the active request render, if any."""
+    trace = _CURRENT_TRACE.get()
+    if trace is None:
+        return False
+    trace.record_data(identity, path)
     return True
 
 
@@ -168,3 +185,12 @@ def _record_template(template: object) -> None:
 
 def _set_attribute(target: object, name: str, value: object) -> None:
     setattr(target, name, value)
+
+
+def _source_version(path: str | Path) -> tuple[SourceVersion, bool]:
+    resolved = Path(path).expanduser().resolve(strict=False)
+    try:
+        stat = resolved.stat()
+    except OSError:
+        return SourceVersion(str(resolved), None, None), False
+    return SourceVersion(str(resolved), stat.st_mtime_ns, stat.st_size), True

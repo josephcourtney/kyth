@@ -88,6 +88,7 @@ def test_post_render_record_serializes_and_closes_connection(monkeypatch: pytest
     assert json.loads(body) == {
         "adapter": "jinja",
         "complete": True,
+        "data_dependencies": [],
         "dependencies": [
             {
                 "mtime_ns": 11,

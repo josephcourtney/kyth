@@ -16,7 +16,7 @@ from kyth.control.client import CLIENT_JAVASCRIPT
 from kyth.control.renders import RenderRegistry
 from kyth.control.sse import EventBroker, SubscriberQueue, encode_sse
 from kyth.control.views import BrowserView, ViewRegistry
-from kyth.model import BrowserResource, BrowserResourceKind, RenderRecord, SourceVersion
+from kyth.model import BrowserResource, BrowserResourceKind, DataDependency, RenderRecord, SourceVersion
 from kyth.protocol import ControlEvent
 
 if TYPE_CHECKING:
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 MAX_REQUEST_BODY = 64 * 1024
 MAX_REGISTERED_RESOURCES = 256
 MAX_RENDER_DEPENDENCIES = 512
+MAX_DATA_DEPENDENCIES = 512
 DEFAULT_HEARTBEAT_SECONDS = 15.0
 
 
@@ -463,14 +464,41 @@ def _render_record(payload: dict[str, object]) -> RenderRecord:
     adapter = _required_string(payload, "adapter")
     complete = _required_bool(payload, "complete")
     dependencies = _source_versions(payload)
+    data_dependencies = _data_dependencies(payload)
     return RenderRecord(
         render_id=render_id,
         generation=generation,
         dependencies=dependencies,
         complete=complete,
         adapter=adapter,
+        data_dependencies=data_dependencies,
     )
 
+
+
+def _data_dependencies(payload: dict[str, object]) -> tuple[DataDependency, ...]:
+    value = payload.get("data_dependencies", [])
+    if not isinstance(value, list):
+        msg = "data_dependencies must be a JSON array"
+        raise TypeError(msg)
+    if len(value) > MAX_DATA_DEPENDENCIES:
+        msg = "data_dependencies contains too many entries"
+        raise ValueError(msg)
+
+    dependencies = {_data_dependency(item) for item in value}
+    return tuple(
+        sorted(dependencies, key=lambda item: (item.identity, item.source.path))
+    )
+
+
+def _data_dependency(value: object) -> DataDependency:
+    if not isinstance(value, dict):
+        msg = "each data dependency must be a JSON object"
+        raise TypeError(msg)
+    item = cast("dict[str, object]", value)
+    identity = _required_string(item, "identity")
+    source = _source_version(item)
+    return DataDependency(identity, source)
 
 def _source_versions(payload: dict[str, object]) -> tuple[SourceVersion, ...]:
     value = payload.get("dependencies")
@@ -585,6 +613,15 @@ def _render_payload(record: RenderRecord) -> dict[str, object]:
         "generation": record.generation,
         "complete": record.complete,
         "adapter": record.adapter,
+        "data_dependencies": [
+            {
+                "identity": dependency.identity,
+                "path": dependency.source.path,
+                "mtime_ns": dependency.source.mtime_ns,
+                "size": dependency.source.size,
+            }
+            for dependency in record.data_dependencies
+        ],
         "dependencies": [
             {
                 "path": dependency.path,

@@ -18,13 +18,35 @@ class RenderProvenanceIndex:
         """Create an empty render provenance index."""
         self._records: dict[str, RenderRecord] = {}
         self._known_sources: set[Path] = set()
+        self._known_render_sources: set[Path] = set()
+        self._known_data_sources: set[Path] = set()
         self._source_views: dict[Path, set[str]] = {}
         self._source_view_versions: dict[Path, dict[str, SourceVersion]] = {}
+        self._data_source_views: dict[Path, dict[str, set[str]]] = {}
+        self._data_source_view_versions: dict[Path, dict[str, SourceVersion]] = {}
         self._complete_view_ids: set[str] = set()
 
     @property
     def known_sources(self) -> frozenset[Path]:
         return frozenset(self._known_sources)
+
+    @property
+    def known_render_sources(self) -> frozenset[Path]:
+        return frozenset(self._known_render_sources)
+
+    @property
+    def known_data_sources(self) -> frozenset[Path]:
+        return frozenset(self._known_data_sources)
+
+    @property
+    def data_source_views(self) -> dict[Path, dict[str, tuple[str, ...]]]:
+        return {
+            path: {
+                view_id: tuple(sorted(identities))
+                for view_id, identities in views.items()
+            }
+            for path, views in self._data_source_views.items()
+        }
 
     @property
     def source_views(self) -> dict[Path, tuple[str, ...]]:
@@ -47,10 +69,18 @@ class RenderProvenanceIndex:
         self._records = {record.render_id: record for record in records}
         for record in self._records.values():
             for dependency in record.dependencies:
-                self._known_sources.add(_normalize_path(dependency.path))
+                path = _normalize_path(dependency.path)
+                self._known_sources.add(path)
+                self._known_render_sources.add(path)
+            for dependency in record.data_dependencies:
+                path = _normalize_path(dependency.source.path)
+                self._known_sources.add(path)
+                self._known_data_sources.add(path)
 
         source_views: dict[Path, set[str]] = {}
         source_view_versions: dict[Path, dict[str, SourceVersion]] = {}
+        data_source_views: dict[Path, dict[str, set[str]]] = {}
+        data_source_view_versions: dict[Path, dict[str, SourceVersion]] = {}
         complete_view_ids: set[str] = set()
         for view_id, render_id in view_render_ids.items():
             record = self._records.get(render_id)
@@ -62,9 +92,17 @@ class RenderProvenanceIndex:
                 path = _normalize_path(dependency.path)
                 source_views.setdefault(path, set()).add(view_id)
                 source_view_versions.setdefault(path, {})[view_id] = dependency
+            for dependency in record.data_dependencies:
+                path = _normalize_path(dependency.source.path)
+                data_source_views.setdefault(path, {}).setdefault(view_id, set()).add(
+                    dependency.identity
+                )
+                data_source_view_versions.setdefault(path, {})[view_id] = dependency.source
 
         self._source_views = source_views
         self._source_view_versions = source_view_versions
+        self._data_source_views = data_source_views
+        self._data_source_view_versions = data_source_view_versions
         self._complete_view_ids = complete_view_ids
 
     def stale_source_views(
@@ -80,6 +118,25 @@ class RenderProvenanceIndex:
             view_ids = tuple(sorted(view_id for view_id, version in versions.items() if version != current))
             if view_ids:
                 stale[path] = view_ids
+        return stale
+
+    def stale_data_source_views(
+        self,
+        changed_paths: Collection[Path],
+    ) -> dict[Path, dict[str, tuple[str, ...]]]:
+        """Return semantic data identities for views whose recorded source is stale."""
+        stale: dict[Path, dict[str, tuple[str, ...]]] = {}
+        for changed_path in changed_paths:
+            path = changed_path.expanduser().resolve(strict=False)
+            current = _source_version(path)
+            versions = self._data_source_view_versions.get(path, {})
+            stale_views = {
+                view_id: self._data_source_views[path][view_id]
+                for view_id, version in versions.items()
+                if version != current
+            }
+            if stale_views:
+                stale[path] = stale_views
         return stale
 
     @staticmethod
