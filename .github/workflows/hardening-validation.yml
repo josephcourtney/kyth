@@ -21,8 +21,20 @@ jobs:
       - run: uv sync
       - run: uv run just format
       - run: git diff --exit-code
-      - run: uv run just check
-      - run: uv run just complexity --strict
+      - name: syntax
+        run: uv run just syntax
+      - name: lint
+        run: uv run just lint --no-fix
+      - name: typecheck
+        run: MODE=ci uv run just typecheck
+      - name: import architecture
+        run: uv run just lint-imports
+      - name: tests
+        run: uv run just test
+      - name: coverage report
+        run: uv run just cov
+      - name: strict complexity
+        run: uv run just complexity --strict
 
   browser:
     needs: static
