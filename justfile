@@ -748,7 +748,7 @@ mutation:
   just _log_start mutation
   just _cache_dirs
 
-  {{UV}} run mutmut run
+  PYTHONDONTWRITEBYTECODE=1 {{UV}} run mutmut run
 
   just _log_end mutation
 
