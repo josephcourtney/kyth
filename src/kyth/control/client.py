@@ -613,7 +613,10 @@ CLIENT_JAVASCRIPT = (
     performanceObserver.observe({type: "resource", buffered: false});
   }
 
-  void claimViewIdentity().then(() => registerView().finally(connectEvents));
+  void claimViewIdentity().then(() => {
+    connectEvents();
+    void registerView();
+  });
   if (document.readyState === "loading") {
     addEventListener("DOMContentLoaded", restorePreservedState, {once: true});
   } else {
