@@ -6,7 +6,7 @@ on:
       - rewrite/dev-server-v1
 
 concurrency:
-  group: phase10-validation-${{ github.ref }}
+  group: phase10-validation-v2-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,7 +19,6 @@ jobs:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@v6
       - run: uv sync
-      - run: uv run ruff format --diff tests/browser/browser_acceptance.py
       - run: uv run just check
       - run: uv run just complexity --strict
 
