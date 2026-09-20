@@ -4,13 +4,13 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-The V1 design surface and the prioritized development-server hardening program are implemented. Current work is maintenance and evidence-driven follow-up rather than feature or robustness completion.
+The V1 design surface, prioritized development-server hardening, and Phase 10 explicit synchronization for non-injectable HTML are implemented. The next planned design extension is Phase 11 finer conservative fallback scopes.
 
 ## Current state
 
 - the current implementation passes `just check`;
 - `just complexity --strict` passes with every analyzed source block below the configured threshold;
-- the full 78-case real-browser acceptance matrix passes across Chromium and Firefox;
+- the full 86-case real-browser acceptance matrix passes across Chromium and Firefox;
 - lifecycle/socket/watcher behavior passes on macOS and Linux across Python 3.12, 3.13, and 3.14;
 - browser view registration is monotonic by generation and registration sequence, so delayed registrations cannot overwrite newer dependency/resource snapshots;
 - duplicated browser tabs rekey inherited tab identities rather than allowing two live documents to control the same view;
@@ -23,12 +23,14 @@ The V1 design surface and the prioritized development-server hardening program a
 - verbose diagnostics expose a structured change-cycle report containing classifications, restart outcome, generated invalidations, affected views, browser actions, and resulting generation;
 - Kyth-managed ASGI responses use development `Cache-Control: no-store` semantics so immutable application caches cannot mask known changes;
 - explicit integrations remain narrow and typed: `depend_on`, `depend_on_data`, custom readiness checks, semantic browser data updates, opt-in state preservation, startup-error events, and external-HMR ownership;
+- streaming and explicitly encoded HTML can opt into the same browser protocol with `kyth.injection.client_script()`; request-local bootstrap metadata preserves generation/render identity, middleware supplies CSP/no-store headers without rewriting body bytes, and explicit renders retain normal provenance/selective invalidation;
 - property/reference-model, fault-injection, lifecycle, provenance, and browser tests cover the corresponding synchronization invariants;
 - the first mutation-testing slice covers `changes.py` and `protocol.py`; its initial run generated 103 mutants, killed 85, skipped 18, and reported no surviving, timeout, or suspicious mutants;
 - browser installation/testing and mutation testing remain explicit and outside `just check`.
 
-## Remaining hardening priorities
+## Next priorities
 
+- implement Phase 11's behavior-preserving per-path uncertainty refactor, then explicit source-glob → URL-glob fallback scopes;
 - inspect uncovered failure branches only where they correspond to plausible development failures; do not chase aggregate coverage;
 - keep `just check`, `just complexity --strict`, the Chromium/Firefox acceptance matrix, and the supported lifecycle matrix green;
 - review remaining medium tests and extract pure policy assertions where doing so improves isolation;
