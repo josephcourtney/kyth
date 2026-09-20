@@ -7,7 +7,14 @@ from http import HTTPStatus
 from threading import Lock
 from typing import Any
 
-from kyth.injection.html import browser_script, inject_script, rewrite_cache_headers, rewrite_headers
+from kyth.injection.bootstrap import ClientBootstrap, capture_client_bootstrap
+from kyth.injection.html import (
+    browser_script,
+    inject_script,
+    rewrite_cache_headers,
+    rewrite_explicit_headers,
+    rewrite_headers,
+)
 from kyth.injection.jinja import capture_render, install_jinja_tracing
 from kyth.injection.reporting import report_render_record
 
@@ -26,10 +33,10 @@ class InjectionConfig:
 
 
 class HTMLInjectionMiddleware:
-    """Inject Kyth's browser client into ordinary uncompressed HTML responses."""
+    """Synchronize supported HTML through automatic or explicit client inclusion."""
 
     def __init__(self, app: ASGIApp, config: InjectionConfig) -> None:
-        """Wrap an ASGI application with development-only HTML injection."""
+        """Wrap an ASGI application with development-only HTML synchronization."""
         self._app = app
         self._control_url = config.control_url.rstrip("/")
         self._token = config.token
@@ -51,7 +58,7 @@ class HTMLInjectionMiddleware:
             return self._generation
 
     async def __call__(self, scope: ASGIScope, receive: Receive, send: Send) -> None:
-        """Run the wrapped ASGI application and inject supported HTML responses."""
+        """Run the wrapped ASGI application and synchronize supported HTML responses."""
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
             return
@@ -59,18 +66,22 @@ class HTMLInjectionMiddleware:
         request_scope = _without_accept_encoding(scope)
         generation = self.generation
         render_id = secrets.token_urlsafe(12)
-        injector = _ResponseInjector(
-            send=send,
+        bootstrap = ClientBootstrap(
             control_url=self._control_url,
             token=self._token,
             generation=generation,
             render_id=render_id,
+            nonce=secrets.token_urlsafe(16),
+        )
+        injector = _ResponseInjector(
+            send=send,
+            bootstrap=bootstrap,
             method=str(scope.get("method", "GET")),
         )
-        with capture_render(render_id, generation) as trace:
+        with capture_client_bootstrap(bootstrap), capture_render(render_id, generation) as trace:
             await self._app(request_scope, receive, injector.send)
 
-        if injector.injected and trace.used:
+        if injector.synchronized and trace.used:
             await report_render_record(
                 self._control_url,
                 self._token,
@@ -83,25 +94,20 @@ class _ResponseInjector:
         self,
         *,
         send: Send,
-        control_url: str,
-        token: str,
-        generation: int,
-        render_id: str,
+        bootstrap: ClientBootstrap,
         method: str,
     ) -> None:
         self._send = send
-        self._control_url = control_url
-        self._token = token
-        self._generation = generation
-        self._render_id = render_id
+        self._bootstrap = bootstrap
         self._method = method.upper()
         self._start: ASGIMessage | None = None
         self._passthrough = False
         self._injected = False
+        self._explicit_integrated = False
 
     @property
-    def injected(self) -> bool:
-        return self._injected
+    def synchronized(self) -> bool:
+        return self._injected or self._explicit_integrated
 
     async def send(self, message: ASGIMessage) -> None:
         message_type = message.get("type")
@@ -118,6 +124,10 @@ class _ResponseInjector:
             await self._send(message)
             return
 
+        if self._bootstrap.explicit_included:
+            await self._send_explicit_body(message)
+            return
+
         if bool(message.get("more_body", False)) or not self._injectable():
             await self._flush_start()
             self._passthrough = bool(message.get("more_body", False))
@@ -125,30 +135,51 @@ class _ResponseInjector:
             return
 
         body = bytes(message.get("body", b""))
-        nonce = secrets.token_urlsafe(16)
         script = browser_script(
-            control_url=self._control_url,
-            token=self._token,
-            generation=self._generation,
-            render_id=self._render_id,
-            nonce=nonce,
+            control_url=self._bootstrap.control_url,
+            token=self._bootstrap.token,
+            generation=self._bootstrap.generation,
+            render_id=self._bootstrap.render_id,
+            nonce=self._bootstrap.nonce,
         )
         injected = inject_script(body, script)
-        start = self._rewritten_start(body_length=len(injected), nonce=nonce)
-        await self._send(start)
+        start = self._rewritten_start(body_length=len(injected))
+        await self._send_start(start)
         await self._send({**message, "body": injected})
         self._injected = True
 
+    async def _send_explicit_body(self, message: ASGIMessage) -> None:
+        if not self._document_response():
+            msg = "Kyth client_script() requires an HTML document response"
+            raise RuntimeError(msg)
+        start = self._rewritten_explicit_start()
+        await self._send_start(start)
+        self._explicit_integrated = True
+        self._passthrough = bool(message.get("more_body", False))
+        await self._send(message)
+
     async def _flush_start(self) -> None:
-        if self._start is not None:
+        if self._start is None:
+            return
+        if self._bootstrap.explicit_included:
+            if not self._document_response():
+                msg = "Kyth client_script() requires an HTML document response"
+                raise RuntimeError(msg)
+            start = self._rewritten_explicit_start()
+            self._explicit_integrated = True
+        else:
             start = {
                 **self._start,
                 "headers": rewrite_cache_headers(_headers(self._start)),
             }
             self._start = None
-            await self._send(start)
+        await self._send_start(start)
 
-    def _injectable(self) -> bool:
+    async def _send_start(self, start: ASGIMessage) -> None:
+        self._bootstrap.headers_committed = True
+        await self._send(start)
+
+    def _document_response(self) -> bool:
         if self._method == "HEAD" or self._start is None:
             return False
         status = int(self._start.get("status", HTTPStatus.OK))
@@ -162,20 +193,36 @@ class _ResponseInjector:
         if _header_value(headers, b"content-range") is not None:
             return False
         content_type = _header_value(headers, b"content-type")
-        if content_type is None or not content_type.lower().startswith(b"text/html"):
+        return content_type is not None and content_type.lower().startswith(b"text/html")
+
+    def _injectable(self) -> bool:
+        if not self._document_response() or self._start is None:
             return False
-        content_encoding = _header_value(headers, b"content-encoding")
+        content_encoding = _header_value(_headers(self._start), b"content-encoding")
         return content_encoding is None or content_encoding.lower() == b"identity"
 
-    def _rewritten_start(self, *, body_length: int, nonce: str) -> ASGIMessage:
+    def _rewritten_start(self, *, body_length: int) -> ASGIMessage:
         if self._start is None:
             msg = "response start is unavailable"
             raise RuntimeError(msg)
         headers = rewrite_headers(
             _headers(self._start),
             body_length=body_length,
-            control_origin=self._control_url,
-            nonce=nonce,
+            control_origin=self._bootstrap.control_url,
+            nonce=self._bootstrap.nonce,
+        )
+        start = {**self._start, "headers": headers}
+        self._start = None
+        return start
+
+    def _rewritten_explicit_start(self) -> ASGIMessage:
+        if self._start is None:
+            msg = "response start is unavailable"
+            raise RuntimeError(msg)
+        headers = rewrite_explicit_headers(
+            _headers(self._start),
+            control_origin=self._bootstrap.control_url,
+            nonce=self._bootstrap.nonce,
         )
         start = {**self._start, "headers": headers}
         self._start = None
