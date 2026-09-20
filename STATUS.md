@@ -4,37 +4,24 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-The V1 design surface, prioritized development-server hardening, Phase 10 explicit synchronization for non-injectable HTML, and Phase 11 finer conservative fallback scopes are implemented. Current work is maintenance and evidence-driven follow-up rather than planned feature completion.
+The V1 design surface, post-v0.2.0 hardening, explicit synchronization for non-injectable HTML, and scoped conservative fallback are implemented. Work is now release-readiness and evidence-driven maintenance rather than planned feature completion.
 
 ## Current state
 
-- the current implementation passes `just check`;
-- `just complexity --strict` passes with every analyzed source block below the configured threshold;
-- the full 90-case real-browser acceptance matrix passes across Chromium and Firefox;
-- lifecycle/socket/watcher behavior passes on macOS and Linux across Python 3.12, 3.13, and 3.14;
-- browser view registration is monotonic by generation and registration sequence, so delayed registrations cannot overwrite newer dependency/resource snapshots;
-- duplicated browser tabs rekey inherited tab identities rather than allowing two live documents to control the same view;
-- the browser opens its control EventSource before publishing its initial view registration, eliminating the registration-before-SSE race that could turn safe narrow updates into missed events and conservative reloads;
-- reconnect recovery closes the SSE stream while offline and requires a fresh authoritative synchronization when connectivity returns;
-- SSE subscriber queues are bounded; a slow subscriber is disconnected on overflow and recovers through normal reconnect synchronization rather than accumulating unbounded pending events;
-- watcher duplicate suppression includes filesystem identity/change metadata in addition to modification time and size, so common atomic-save replacement patterns are not discarded as duplicates;
-- restart-requiring generated sources do not reload a generated view until its rebuilt output is ready, including transient output deletion and partial rebuilds of sibling outputs sharing a source;
-- runtime restart classification is extensible with repeated `--restart-on PATTERN` options;
-- verbose diagnostics expose a structured change-cycle report containing classifications, restart outcome, generated invalidations, affected views, browser actions, and resulting generation;
-- Kyth-managed ASGI responses use development `Cache-Control: no-store` semantics so immutable application caches cannot mask known changes;
-- explicit integrations remain narrow and typed: `depend_on`, `depend_on_data`, custom readiness checks, semantic browser data updates, opt-in state preservation, startup-error events, and external-HMR ownership;
-- streaming and explicitly encoded HTML can opt into the same browser protocol with `kyth.injection.client_script()`; request-local bootstrap metadata preserves generation/render identity, middleware supplies CSP/no-store headers without rewriting body bytes, and explicit renders retain normal provenance/selective invalidation;
-- repeated `--fallback-scope SOURCE_GLOB URL_GLOB` rules can narrow only otherwise-uncertain browser invalidation; source patterns are matched against configured development roots, URL scopes are matched against normalized active-view paths, precise provenance still wins, and unmatched ambiguity retains application-wide conservative reload;
-- fallback-scope sources become browser-relevant even without a generic browser suffix, while restart and external-HMR classification retain precedence; restart-driven browser synchronization is not narrowed by fallback scopes;
-- property/reference-model, fault-injection, lifecycle, provenance, and browser tests cover the corresponding synchronization invariants;
-- the first mutation-testing slice covers `changes.py` and `protocol.py`; its initial run generated 103 mutants, killed 85, skipped 18, and reported no surviving, timeout, or suspicious mutants;
-- browser installation/testing and mutation testing remain explicit and outside `just check`.
+- `just check` and `just complexity --strict` pass; every analyzed source block is below the configured complexity threshold.
+- The 90-case Chromium/Firefox acceptance matrix passes.
+- Lifecycle/socket/watcher behavior has been rehearsed on macOS and Linux across Python 3.12-3.14.
+- Browser registration/reconnect, bounded SSE queues, duplicate-tab identity, watcher atomic-save handling, and generated-output readiness races have dedicated hardening coverage.
+- Direct output/resource provenance, Jinja/render provenance, generated manifests, explicit render/data dependencies, readiness hooks, state preservation, external-HMR ownership, and fallback scopes are implemented.
+- Streaming and explicitly encoded HTML can opt into the normal browser protocol through `kyth.injection.client_script()`.
+- Fallback scopes narrow only otherwise-uncertain views; precise provenance still wins, unmatched ambiguity remains application-wide, and restart/external-HMR classification retains precedence.
+- The current mutation slice covers `changes.py` and `protocol.py`; its recorded run had no surviving, timeout, or suspicious mutants.
+- `just release-check` now validates the repository, builds without local source overrides, installs the resulting wheel into a fresh environment, runs `kyth --help`, and imports the documented Python integration surface.
 
 ## Next priorities
 
-- inspect uncovered failure branches only where they correspond to plausible development failures; do not chase aggregate coverage;
-- keep `just check`, `just complexity --strict`, the Chromium/Firefox acceptance matrix, and the supported lifecycle matrix green;
-- review remaining medium tests and extract pure policy assertions where doing so improves isolation;
-- expand mutation testing to another pure policy/provenance module only when it is likely to expose a meaningful assertion gap;
-- add WebKit only if Safari/WebKit becomes an intended development target;
-- add bounded diagnostic history only if real debugging shows that `last_change_report` is insufficient.
+- run one focused mutation expansion over pure invalidation/fallback policy and add assertions only for meaningful survivors;
+- inspect uncovered branches only when they represent plausible development failures;
+- keep the canonical, browser, complexity, and supported lifecycle gates green;
+- prepare the 1.0 release metadata/changelog/version commit when ready to declare the compatibility boundary stable;
+- add WebKit, diagnostic history, or a broader plugin framework only in response to a concrete product need.
