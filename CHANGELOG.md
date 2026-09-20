@@ -56,6 +56,7 @@ Items should be categorized under these headings:
 - explicitly reopen the browser EventSource when connectivity returns so stale views always receive a fresh generation sync instead of depending on browser-specific automatic reconnect timing
 - open the browser control EventSource before publishing the first view registration so an edit cannot land in the registration-before-SSE gap and force a conservative reload
 - keep unreconstructed generated sibling outputs stale when a shared source changes and only one output has rebuilt
+- make the hardening test harness local-machine-safe by using an ephemeral supervisor port and disabling pytest/Hypothesis bytecode writes during test execution
 
 ## [0.2.0] - 2026-09-18
 
