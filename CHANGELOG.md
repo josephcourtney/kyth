@@ -36,7 +36,7 @@ Items should be categorized under these headings:
 - add pure fallback-scope matching/validation plus property and real-browser coverage for scoped versus application-wide conservative invalidation
 - add hardening coverage for registration ordering, duplicate tabs, reconnect/restart races, generated-output deletion and partial rebuilds, and atomic-save watcher behavior
 - add a macOS/Linux lifecycle rehearsal matrix across Python 3.12-3.14
-- add a narrow `just mutation` diagnostic for change-classification and protocol policy
+- expand the `just mutation` diagnostic across change classification, fallback scoping, browser invalidation, and protocol policy; the 772-mutant slice reports no surviving, timeout, or suspicious mutants
 
 ### Changed
 
