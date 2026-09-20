@@ -80,11 +80,22 @@ class BrowserAction:
 
 
 @dataclass(frozen=True, slots=True)
+class BrowserFallback:
+    """Explain conservative treatment of one path's uncertain view set."""
+
+    path: Path
+    uncertain_view_ids: tuple[str, ...]
+    reload_view_ids: tuple[str, ...]
+    scoped: bool
+
+
+@dataclass(frozen=True, slots=True)
 class BrowserUpdateDecision:
     invalidated_paths: tuple[Path, ...]
     actions: tuple[BrowserAction, ...]
     current_view_ids: tuple[str, ...]
     reason: str
+    fallbacks: tuple[BrowserFallback, ...] = ()
 
 
 def decide_browser_updates(
@@ -102,137 +113,126 @@ def decide_browser_updates(
     active_view_ids: Collection[str],
     known_data_sources: Collection[Path] = (),
     data_source_views: Mapping[Path, Mapping[str, Collection[str]]] | None = None,
+    fallback_scope_views: Mapping[Path, Collection[str]] | None = None,
 ) -> BrowserUpdateDecision:
     """Choose one coherent browser action per view for a stable change batch."""
     paths = tuple(sorted(set(changed_paths), key=Path.as_posix))
     active = set(active_view_ids)
     data_views = {} if data_source_views is None else data_source_views
+    scope_views = {} if fallback_scope_views is None else fallback_scope_views
     if not paths:
         return BrowserUpdateDecision((), (), tuple(sorted(active)), "no-browser-change")
 
-    content_paths, resource_paths = _split_paths(
-        paths,
-        known_outputs=known_outputs,
-        known_render_sources=known_render_sources,
-        known_data_sources=known_data_sources,
-    )
-    if _contains_unknown_paths(
-        content_paths,
-        resource_paths,
-        known_outputs=known_outputs,
-        known_render_sources=known_render_sources,
-        known_data_sources=known_data_sources,
-        known_resources=known_resources,
-    ):
-        return _reload_all(paths, active, reason="ambiguous-browser-dependency")
-
-    actions: dict[str, BrowserAction] = {}
-    _merge_content_actions(
-        actions,
-        content_paths,
-        active=active,
-        known_outputs=known_outputs,
-        output_views=output_views,
-        known_render_sources=known_render_sources,
-        render_source_views=render_source_views,
-        complete_render_view_ids=complete_render_view_ids,
-        deferred_source_views=deferred_source_views,
-        known_data_sources=known_data_sources,
-        data_source_views=data_views,
-    )
-    _merge_resource_actions(
-        actions,
-        resource_paths,
-        active=active,
-        complete_resource_view_ids=complete_resource_view_ids,
-        resource_views=resource_views,
-    )
-
-    ordered_actions = tuple(sorted(actions.values(), key=lambda action: action.view_id))
-    current = tuple(sorted(active - set(actions)))
-    reason = _decision_reason(
-        ordered_actions,
-        content_paths=content_paths,
-        resource_paths=resource_paths,
-        known_render_sources=known_render_sources,
-    )
-    return BrowserUpdateDecision(paths, ordered_actions, current, reason)
-
-
-def _split_paths(
-    paths: tuple[Path, ...],
-    *,
-    known_outputs: Collection[Path],
-    known_render_sources: Collection[Path],
-    known_data_sources: Collection[Path],
-) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
-    content_known = set(known_outputs) | set(known_render_sources) | set(known_data_sources)
-    content = tuple(path for path in paths if path.suffix.lower() in HTML_SUFFIXES or path in content_known)
-    content_set = set(content)
-    resources = tuple(path for path in paths if path not in content_set)
-    return content, resources
-
-
-def _contains_unknown_paths(
-    content_paths: tuple[Path, ...],
-    resource_paths: tuple[Path, ...],
-    *,
-    known_outputs: Collection[Path],
-    known_render_sources: Collection[Path],
-    known_data_sources: Collection[Path],
-    known_resources: Collection[Path],
-) -> bool:
-    known_content = set(known_outputs) | set(known_render_sources) | set(known_data_sources)
-    known_resource_paths = set(known_resources)
-    return any(path not in known_content for path in content_paths) or any(
-        path not in known_resource_paths for path in resource_paths
-    )
-
-
-def _merge_content_actions(
-    actions: dict[str, BrowserAction],
-    paths: tuple[Path, ...],
-    *,
-    active: set[str],
-    known_outputs: Collection[Path],
-    output_views: Mapping[Path, Collection[str]],
-    known_render_sources: Collection[Path],
-    render_source_views: Mapping[Path, Collection[str]],
-    complete_render_view_ids: Collection[str],
-    deferred_source_views: Mapping[Path, Collection[str]],
-    known_data_sources: Collection[Path],
-    data_source_views: Mapping[Path, Mapping[str, Collection[str]]],
-) -> None:
     known_output_paths = set(known_outputs)
     known_render_paths = set(known_render_sources)
     known_data_paths = set(known_data_sources)
+    known_content_paths = known_output_paths | known_render_paths | known_data_paths
+    known_resource_paths = set(known_resources)
     direct_views = {view_id for view_ids in output_views.values() for view_id in view_ids} & active
     complete_render_views = set(complete_render_view_ids) & active
+    complete_resource_views = set(complete_resource_view_ids) & active
+
+    actions: dict[str, BrowserAction] = {}
+    fallbacks: list[BrowserFallback] = []
+    unknown_paths: set[Path] = set()
+    removed_by_scope: set[str] = set()
 
     for path in paths:
-        precise: set[str] = set()
-        affected: set[str] = set()
-        source_affected: set[str] = set()
-        deferred = set(deferred_source_views.get(path, ())) & active
-        if path in known_output_paths:
-            precise.update(direct_views)
-            affected.update(output_views.get(path, ()))
-        if path in known_render_paths:
-            precise.update(complete_render_views)
-            source_affected.update(render_source_views.get(path, ()))
-        if path in known_data_paths:
-            precise.update(complete_render_views)
-            _merge_data_actions(
+        if path in known_content_paths:
+            uncertain = _merge_content_path(
                 actions,
-                data_source_views.get(path, {}),
+                path,
                 active=active,
-                deferred=deferred,
+                direct_views=direct_views,
+                complete_render_views=complete_render_views,
+                known_output_paths=known_output_paths,
+                output_views=output_views,
+                known_render_paths=known_render_paths,
+                render_source_views=render_source_views,
+                deferred_source_views=deferred_source_views,
+                known_data_paths=known_data_paths,
+                data_source_views=data_views,
             )
-        precise.update(deferred)
-        affected.update(source_affected - deferred)
+        elif path in known_resource_paths:
+            uncertain = _merge_resource_path(
+                actions,
+                path,
+                active=active,
+                complete_resource_views=complete_resource_views,
+                resource_views=resource_views,
+            )
+        else:
+            unknown_paths.add(path)
+            uncertain = set(active)
 
-        for view_id in (affected & active) | (active - precise):
+        fallback = _apply_fallback(path, uncertain, scope_views=scope_views)
+        fallbacks.append(fallback)
+        removed_by_scope.update(set(fallback.uncertain_view_ids) - set(fallback.reload_view_ids))
+        for view_id in fallback.reload_view_ids:
             _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))
+
+    ordered_actions = tuple(sorted(actions.values(), key=lambda action: action.view_id))
+    current = tuple(sorted(active - set(actions)))
+    materially_scoped = any(
+        view_id not in actions or actions[view_id].kind is not BrowserActionKind.RELOAD
+        for view_id in removed_by_scope
+    )
+    reason = _decision_reason(
+        ordered_actions,
+        paths=paths,
+        unknown_paths=unknown_paths,
+        known_render_sources=known_render_paths,
+        known_content_paths=known_content_paths,
+        known_resources=known_resource_paths,
+        materially_scoped=materially_scoped,
+    )
+    return BrowserUpdateDecision(paths, ordered_actions, current, reason, tuple(fallbacks))
+
+
+def _merge_content_path(
+    actions: dict[str, BrowserAction],
+    path: Path,
+    *,
+    active: set[str],
+    direct_views: set[str],
+    complete_render_views: set[str],
+    known_output_paths: set[Path],
+    output_views: Mapping[Path, Collection[str]],
+    known_render_paths: set[Path],
+    render_source_views: Mapping[Path, Collection[str]],
+    deferred_source_views: Mapping[Path, Collection[str]],
+    known_data_paths: set[Path],
+    data_source_views: Mapping[Path, Mapping[str, Collection[str]]],
+) -> set[str]:
+    precise: set[str] = set()
+    known_affected: set[str] = set()
+    deferred = set(deferred_source_views.get(path, ())) & active
+
+    if path in known_output_paths:
+        precise.update(direct_views)
+        known_affected.update(set(output_views.get(path, ())) & active)
+
+    if path in known_render_paths:
+        precise.update(complete_render_views)
+        known_affected.update((set(render_source_views.get(path, ())) & active) - deferred)
+
+    data_affected: set[str] = set()
+    if path in known_data_paths:
+        precise.update(complete_render_views)
+        data_affected = _merge_data_actions(
+            actions,
+            data_source_views.get(path, {}),
+            active=active,
+            deferred=deferred,
+        )
+        for view_id in data_affected - complete_render_views:
+            _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))
+
+    precise.update(deferred)
+    for view_id in known_affected:
+        _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))
+
+    return active - precise - known_affected - data_affected
 
 
 def _merge_data_actions(
@@ -241,10 +241,12 @@ def _merge_data_actions(
     *,
     active: set[str],
     deferred: set[str],
-) -> None:
+) -> set[str]:
+    affected: set[str] = set()
     for view_id, identities in identities_by_view.items():
         if view_id not in active or view_id in deferred:
             continue
+        affected.add(view_id)
         _merge_action(
             actions,
             BrowserAction(
@@ -253,31 +255,46 @@ def _merge_data_actions(
                 data_ids=tuple(sorted(set(identities))),
             ),
         )
+    return affected
 
 
-def _merge_resource_actions(
+def _merge_resource_path(
     actions: dict[str, BrowserAction],
-    resource_paths: tuple[Path, ...],
+    path: Path,
     *,
     active: set[str],
-    complete_resource_view_ids: Collection[str],
+    complete_resource_views: set[str],
     resource_views: Mapping[Path, Mapping[str, Collection[BrowserResource]]],
-) -> None:
-    if not resource_paths:
-        return
-    complete_views = set(complete_resource_view_ids) & active
-    for view_id in active - complete_views:
-        _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))
-    for path in resource_paths:
-        for view_id, references in resource_views.get(path, {}).items():
-            if view_id not in active:
-                continue
-            candidate = (
-                _resource_action(path, view_id, references)
-                if view_id in complete_views
-                else BrowserAction(view_id, BrowserActionKind.RELOAD)
-            )
-            _merge_action(actions, candidate)
+) -> set[str]:
+    referenced: set[str] = set()
+    for view_id, references in resource_views.get(path, {}).items():
+        if view_id not in active:
+            continue
+        referenced.add(view_id)
+        candidate = (
+            _resource_action(path, view_id, references)
+            if view_id in complete_resource_views
+            else BrowserAction(view_id, BrowserActionKind.RELOAD)
+        )
+        _merge_action(actions, candidate)
+
+    return active - complete_resource_views - referenced
+
+
+def _apply_fallback(
+    path: Path,
+    uncertain: set[str],
+    *,
+    scope_views: Mapping[Path, Collection[str]],
+) -> BrowserFallback:
+    scoped = path in scope_views
+    selected = uncertain & set(scope_views[path]) if scoped else uncertain
+    return BrowserFallback(
+        path=path,
+        uncertain_view_ids=tuple(sorted(uncertain)),
+        reload_view_ids=tuple(sorted(selected)),
+        scoped=scoped,
+    )
 
 
 def _resource_action(
@@ -317,28 +334,23 @@ def _merge_action(actions: dict[str, BrowserAction], candidate: BrowserAction) -
 def _decision_reason(
     actions: tuple[BrowserAction, ...],
     *,
-    content_paths: tuple[Path, ...],
-    resource_paths: tuple[Path, ...],
-    known_render_sources: Collection[Path],
+    paths: tuple[Path, ...],
+    unknown_paths: set[Path],
+    known_render_sources: set[Path],
+    known_content_paths: set[Path],
+    known_resources: set[Path],
+    materially_scoped: bool,
 ) -> str:
+    if materially_scoped:
+        return "scoped-conservative-fallback"
+    if unknown_paths:
+        return "ambiguous-browser-dependency"
     if any(action.kind is not BrowserActionKind.RELOAD for action in actions):
         return "narrow-browser-update"
-    if content_paths and any(path in set(known_render_sources) for path in content_paths):
+    if any(path in known_render_sources for path in paths):
         return "render-provenance"
-    if content_paths and not resource_paths:
+    if paths and all(path in known_content_paths for path in paths):
         return "known-direct-output"
+    if all(path in known_resources for path in paths):
+        return "known-browser-dependency"
     return "known-browser-dependency"
-
-
-def _reload_all(
-    paths: tuple[Path, ...],
-    active: set[str],
-    *,
-    reason: str,
-) -> BrowserUpdateDecision:
-    return BrowserUpdateDecision(
-        paths,
-        tuple(BrowserAction(view_id, BrowserActionKind.RELOAD) for view_id in sorted(active)),
-        (),
-        reason,
-    )
