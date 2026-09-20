@@ -4,7 +4,7 @@ Kyth is a local development supervisor for Python web applications and generated
 
 The current baseline is **v0.2.0**.
 
-The ground-up V1 implementation now covers the complete design surface: supervisor-owned application and control sockets, restartable ASGI lifecycle, filesystem watching, transparent HTML client injection, generation-aware reload, direct output/resource awareness, narrow CSS/image updates, server-render provenance with zero-touch Jinja tracing, generated-site dependency manifests, configurable runtime restart inputs, explicit render/data dependencies, custom readiness, opt-in browser state preservation, semantic data updates, external-HMR coexistence, and structured decision diagnostics.
+The ground-up V1 implementation now covers the complete design surface: supervisor-owned application and control sockets, restartable ASGI lifecycle, filesystem watching, transparent HTML client injection, generation-aware reload, direct output/resource awareness, narrow CSS/image updates, server-render provenance with zero-touch Jinja tracing, generated-site dependency manifests, configurable runtime restart inputs, explicit render/data dependencies, custom readiness, opt-in browser state preservation, semantic data updates, external-HMR coexistence, scoped conservative fallback rules, and structured decision diagnostics.
 
 Basic usage:
 
@@ -12,7 +12,7 @@ Basic usage:
 kyth package.module:app
 ```
 
-Use repeated `--watch PATH` options to override the default current-directory watch root, repeated `--ignore PATH` options to add ignored paths, `--restart-on PATTERN` for additional process-loaded configuration, and `--external-hmr-on PATTERN` for browser assets owned by another development server. `--verbose` exposes the full change-decision chain. Use `--control-port PORT` only when a fixed loopback control port is required; otherwise Kyth chooses one automatically.
+Use repeated `--watch PATH` options to override the default current-directory watch root, repeated `--ignore PATH` options to add ignored paths, `--restart-on PATTERN` for additional process-loaded configuration, `--external-hmr-on PATTERN` for browser assets owned by another development server, and `--fallback-scope SOURCE_GLOB URL_GLOB` to narrow conservative reload for otherwise-uncertain source/view relationships. `--verbose` exposes the full change-decision chain. Use `--control-port PORT` only when a fixed loopback control port is required; otherwise Kyth chooses one automatically.
 
 For generated sites, pass one or more dependency manifests:
 
@@ -27,6 +27,8 @@ For supported ordinary HTML responses, no application or template changes are re
 Streaming or otherwise non-injectable HTML can opt into the same synchronization protocol with `kyth.injection.client_script()`. Call it while constructing the document, before response headers/body are committed, and include the returned `<script>` element verbatim in the HTML. Kyth leaves streaming or encoded body bytes untouched while applying the required development cache/CSP headers and retaining the same generation, render provenance, per-tab registration, reconnect, and reload behavior. Outside a Kyth-managed request the helper returns an empty string. Template engines with auto-escaping must explicitly render the returned development-only markup as HTML rather than escaped text.
 
 Direct stylesheet links and safe `<img src>` resources can update in place; JavaScript, fonts, ambiguous resources, incomplete provenance, and failed narrow updates retain full reload as the correctness fallback. Kyth disables stale development response caching so full reload remains a reliable recovery mechanism.
+
+Fallback scopes are explicit completeness assertions, not inferred heuristics. For example, `--fallback-scope 'content/docs/**' '/docs/**'` asserts that otherwise-unknown changes under that source glob cannot affect active views outside `/docs/**`. Multiple matching rules union their URL scopes; query strings and fragments do not affect URL matching. Precise direct/resource/render/data provenance always takes precedence, and a changed path with no matching scope retains the existing application-wide conservative fallback. Restart-worthy changes and externally owned HMR paths retain their stronger classification semantics, and server-restart reloads are not narrowed by fallback scopes. An incorrect scope assertion can suppress a reload that would otherwise have occurred.
 
 Applications that need more precision may opt in narrowly: `kyth.injection.depend_on(path)` records an explicit render dependency, `depend_on_data(identity, path)` enables targeted `kyth:data-update` events, and `register_readiness_check` delays READY until an application-specific synchronous or asynchronous check succeeds. Browser code can claim data updates with `event.detail.handle(...)`, preserve JSON-serializable state through `kyth:before-reload`, restore it from `kyth:restore-state`, and observe non-navigating `kyth:server-error` diagnostics.
 
