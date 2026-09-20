@@ -35,6 +35,8 @@ _PAGE_ROUTES = {
     "/data/": "data.html",
     "/data-unhandled/": "data-unhandled.html",
     "/state/": "state.html",
+    "/docs/": "docs.html",
+    "/admin/": "admin.html",
 }
 
 
