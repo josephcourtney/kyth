@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kyth.fallback import FallbackScopeRule
 from kyth.supervisor import Supervisor, SupervisorConfig
 
 if TYPE_CHECKING:
@@ -63,6 +64,15 @@ def _parser() -> argparse.ArgumentParser:
         help="browser path pattern owned by an external HMR server; may be repeated",
     )
     parser.add_argument(
+        "--fallback-scope",
+        dest="fallback_scopes",
+        action="append",
+        nargs=2,
+        default=[],
+        metavar=("SOURCE_GLOB", "URL_GLOB"),
+        help="constrain conservative reload for matching sources to a URL-path scope; may be repeated",
+    )
+    parser.add_argument(
         "--control-port",
         type=int,
         default=0,
@@ -90,6 +100,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
         manifest_paths=tuple(args.manifest_paths),
         restart_patterns=tuple(args.restart_patterns),
         external_hmr_patterns=tuple(args.external_hmr_patterns),
+        fallback_scopes=tuple(FallbackScopeRule(*values) for values in args.fallback_scopes),
     )
 
     with Supervisor(config) as supervisor, contextlib.suppress(KeyboardInterrupt):
