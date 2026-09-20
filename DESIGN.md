@@ -83,7 +83,13 @@ Known unrelated changes must not reload a view merely because they share a file 
 
 ### Conservative uncertainty
 
-Dependency precision is optional; stale output is not. When Kyth cannot determine whether a changed source affects a current view, it must use the configured conservative fallback, normally a full reload of the affected scope.
+Dependency precision is optional; stale output is not. Invalidation uncertainty is represented per changed path rather than collapsing an entire batch immediately to application-wide reload.
+
+By default, an uncertain relationship conservatively reloads every active view for which Kyth cannot prove the changed path irrelevant. Users may explicitly narrow that uncertainty with trusted source-glob → URL-glob fallback-scope assertions. A scope rule may remove only otherwise-uncertain views from the fallback set; it must never suppress a view that precise direct serving, resource tracking, render provenance, data provenance, or generated-output metadata identifies as affected.
+
+Scope rules are declarations of dependency completeness, not heuristics inferred from similar path names. If no rule matches an ambiguous changed path, Kyth retains the application-wide conservative fallback. Multiple matching rules union their URL scopes. A rule that matches a source but currently matches no active URL is a valid assertion that no active uncertain view needs disturbance.
+
+Restart semantics and externally owned HMR remain stronger classifications than fallback scopes. In particular, fallback scopes do not narrow browser reloads caused by server replacement.
 
 ### Completed-state generations
 
@@ -157,7 +163,7 @@ Dependency information may come from, in descending order of precision:
 3. static template analysis;
 4. direct static-file serving relationships;
 5. explicit integration APIs;
-6. conservative configured scopes.
+6. explicit conservative fallback scopes.
 
 Runtime provenance is preferred when dynamic template selection makes static dependency analysis incomplete.
 
