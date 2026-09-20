@@ -55,6 +55,22 @@ def inject_script(body: bytes, script: bytes) -> bytes:
     return body + script
 
 
+def rewrite_explicit_headers(
+    headers: Iterable[tuple[bytes, bytes]],
+    *,
+    control_origin: str,
+    nonce: str,
+) -> list[tuple[bytes, bytes]]:
+    """Adjust metadata for an explicitly integrated response without changing its body."""
+    rewritten: list[tuple[bytes, bytes]] = []
+    for name, value in rewrite_cache_headers(headers):
+        if name.lower() in {b"content-security-policy", b"content-security-policy-report-only"}:
+            rewritten.append((name, augment_csp(value, control_origin=control_origin, nonce=nonce)))
+        else:
+            rewritten.append((name, value))
+    return rewritten
+
+
 def rewrite_headers(
     headers: Iterable[tuple[bytes, bytes]],
     *,
