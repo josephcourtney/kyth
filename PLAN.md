@@ -253,7 +253,7 @@ These are deliberately small typed/configured extensions. Do not replace them wi
 
 ## Phase 10: explicit synchronization for non-injectable HTML
 
-**Status: planned.**
+**Status: delivered.**
 
 Extend the existing browser synchronization protocol to HTML responses Kyth deliberately does not rewrite, especially streaming and explicitly encoded responses. This is an explicit application integration, not a second browser-control mechanism.
 
@@ -366,7 +366,7 @@ Phase 10 is complete when unsupported HTML can opt into the existing synchroniza
 
 ## Phase 11: finer conservative fallback scopes
 
-**Status: planned after Phase 10.**
+**Status: planned; Phase 10 prerequisite is delivered.**
 
 Replace the current binary choice between precise targeting and application-wide conservative reload with explicitly configured conservative scopes. Preserve application-wide reload as the default whenever no trusted scope rule applies.
 
