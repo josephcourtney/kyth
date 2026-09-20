@@ -69,3 +69,37 @@ def test_external_hmr_pattern_suppresses_kyth_browser_classification() -> None:
         "site.css": ChangeEffect.BROWSER_CHANGE,
     }
     assert result.external_hmr_paths == (Path("/project/frontend/app.js"),)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_fallback_scoped_source_is_browser_change_even_without_browser_suffix() -> None:
+    source = Path("/project/content/article.md")
+    batch = FileBatch.from_events([FileEvent(source, FileOperation.MODIFIED)])
+
+    changes = classify_batch(batch, fallback_scope_paths={source})
+
+    assert changes.browser_paths == (source,)
+    assert changes.other_paths == ()
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_restart_and_external_hmr_precede_fallback_scope_classification() -> None:
+    python = Path("/project/src/app.py")
+    frontend = Path("/project/frontend/app.js")
+    batch = FileBatch.from_events([
+        FileEvent(python, FileOperation.MODIFIED),
+        FileEvent(frontend, FileOperation.MODIFIED),
+    ])
+    policy = ChangePolicy(external_hmr_patterns=("frontend/*.js",))
+
+    changes = classify_batch(
+        batch,
+        policy=policy,
+        fallback_scope_paths={python, frontend},
+    )
+
+    effects = {item.path: item.effect for item in changes.paths}
+    assert effects[python] is ChangeEffect.SERVER_RESTART
+    assert effects[frontend] is ChangeEffect.EXTERNAL_HMR
