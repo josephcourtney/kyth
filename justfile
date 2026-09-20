@@ -774,6 +774,40 @@ build-release:
   @just _log_end build-release
 
 
+# Install the release wheel into a fresh environment and exercise the
+# documented command/API boundary from the built artifact rather than source.
+[group('production')]
+release-smoke:
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  just _log_start release-smoke
+
+  version="$({{UV}} run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+  wheel=""
+  wheel_count=0
+  for candidate in dist/kyth-"$version"-*.whl; do
+    if [ ! -e "$candidate" ]; then
+      continue
+    fi
+    wheel="$candidate"
+    wheel_count=$((wheel_count + 1))
+  done
+  if [ "$wheel_count" -ne 1 ]; then
+    echo "Expected exactly one wheel for kyth $version in dist/; found $wheel_count" >&2
+    exit 1
+  fi
+
+  smoke_dir=".cache/release-smoke"
+  rm -rf "$smoke_dir"
+  {{UV}} venv "$smoke_dir"
+  {{UV}} pip install --python "$smoke_dir/bin/python" "$wheel"
+  "$smoke_dir/bin/kyth" --help >/dev/null
+  "$smoke_dir/bin/python" -c 'from kyth.injection import client_script, depend_on, depend_on_data, register_readiness_check'
+
+  just _log_end release-smoke
+
+
 # Publish artifacts in dist/.
 # Publishing is intentionally separate from validation so it is never an
 # accidental consequence of another recipe.
@@ -911,11 +945,12 @@ check:
   @just _log_end check
 
 
-# Release preflight: validate the repository and prove that a distribution can
-# be built without local uv source overrides.
+# Release preflight: validate the repository, build without local source
+# overrides, then install and smoke-test the resulting wheel in a fresh environment.
 [group('production')]
 release-check:
   @just _log_start release-check
   @just _run check "just check"
   @just _run build-release "just build-release"
+  @just _run release-smoke "just release-smoke"
   @just _log_end release-check
