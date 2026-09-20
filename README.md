@@ -32,6 +32,17 @@ Fallback scopes are explicit completeness assertions, not inferred heuristics. F
 
 Applications that need more precision may opt in narrowly: `kyth.injection.depend_on(path)` records an explicit render dependency, `depend_on_data(identity, path)` enables targeted `kyth:data-update` events, and `register_readiness_check` delays READY until an application-specific synchronous or asynchronous check succeeds. Browser code can claim data updates with `event.detail.handle(...)`, preserve JSON-serializable state through `kyth:before-reload`, restore it from `kyth:restore-state`, and observe non-navigating `kyth:server-error` diagnostics.
 
+## Compatibility surface
+
+The intended stable compatibility surface for the 1.x series is deliberately small:
+
+- the documented `kyth` command-line interface and its option semantics;
+- the version-1 generated dependency manifest schema;
+- the explicit Python integration functions exported from `kyth.injection`: `client_script`, `depend_on`, `depend_on_data`, and `register_readiness_check`;
+- the documented browser integration events `kyth:data-update`, `kyth:server-error`, `kyth:before-reload`, and `kyth:restore-state`.
+
+Other `kyth.*` modules, classes, helper functions, control-plane endpoints, and wire details are implementation internals unless separately documented as public. They may change within the 1.x series when doing so does not alter the compatibility surface above.
+
 See:
 
 - `DESIGN.md` for project architecture and invariants;
