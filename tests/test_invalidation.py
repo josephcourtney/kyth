@@ -370,3 +370,172 @@ def test_manifest_deferred_view_suppresses_semantic_data_update_until_output_rea
         ("dynamic", BrowserActionKind.DATA_UPDATE),
     ]
     assert decision.current_view_ids == ("generated",)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_unknown_dependency_scope_reloads_only_scoped_uncertain_views() -> None:
+    unknown = Path("/project/content/guide.md")
+    decision = decide_browser_updates(
+        (unknown,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"docs", "admin"},
+        fallback_scope_views={unknown: {"docs"}},
+    )
+
+    assert [(action.view_id, action.kind) for action in decision.actions] == [
+        ("docs", BrowserActionKind.RELOAD),
+    ]
+    assert decision.current_view_ids == ("admin",)
+    assert decision.reason == "scoped-conservative-fallback"
+    assert decision.fallbacks[0].uncertain_view_ids == ("admin", "docs")
+    assert decision.fallbacks[0].reload_view_ids == ("docs",)
+    assert decision.fallbacks[0].scoped is True
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_matching_empty_scope_can_leave_all_uncertain_views_current() -> None:
+    unknown = Path("/project/content/guide.md")
+    decision = decide_browser_updates(
+        (unknown,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"admin"},
+        fallback_scope_views={unknown: ()},
+    )
+
+    assert decision.actions == ()
+    assert decision.current_view_ids == ("admin",)
+    assert decision.reason == "scoped-conservative-fallback"
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_unmatched_ambiguous_path_widens_mixed_batch_back_to_global_reload() -> None:
+    scoped = Path("/project/content/guide.md")
+    unscoped = Path("/project/mystery.bin")
+    decision = decide_browser_updates(
+        (scoped, unscoped),
+        known_outputs=(),
+        output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"docs", "admin"},
+        fallback_scope_views={scoped: {"docs"}},
+    )
+
+    assert [(action.view_id, action.kind) for action in decision.actions] == [
+        ("admin", BrowserActionKind.RELOAD),
+        ("docs", BrowserActionKind.RELOAD),
+    ]
+    assert decision.current_view_ids == ()
+    assert decision.reason == "ambiguous-browser-dependency"
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_precise_render_dependency_outside_scope_is_never_suppressed() -> None:
+    template = Path("/project/templates/shared.html")
+    decision = decide_browser_updates(
+        (template,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources={template},
+        render_source_views={template: ("outside-precise",)},
+        complete_render_view_ids={"outside-precise"},
+        deferred_source_views={},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"outside-precise", "uncertain-in", "uncertain-out"},
+        fallback_scope_views={template: {"uncertain-in"}},
+    )
+
+    assert [(action.view_id, action.kind) for action in decision.actions] == [
+        ("outside-precise", BrowserActionKind.RELOAD),
+        ("uncertain-in", BrowserActionKind.RELOAD),
+    ]
+    assert decision.current_view_ids == ("uncertain-out",)
+    assert decision.reason == "scoped-conservative-fallback"
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_scope_narrows_only_incomplete_resource_views() -> None:
+    stylesheet = Path("/project/static/site.css")
+    decision = decide_browser_updates(
+        (stylesheet,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
+        known_resources={stylesheet},
+        resource_views={
+            stylesheet: {
+                "complete": (
+                    BrowserResource(
+                        "http://127.0.0.1:8000/static/site.css",
+                        BrowserResourceKind.STYLESHEET,
+                    ),
+                ),
+            },
+        },
+        complete_resource_view_ids={"complete"},
+        active_view_ids={"complete", "incomplete-in", "incomplete-out"},
+        fallback_scope_views={stylesheet: {"incomplete-in"}},
+    )
+
+    assert [(action.view_id, action.kind) for action in decision.actions] == [
+        ("complete", BrowserActionKind.CSS_UPDATE),
+        ("incomplete-in", BrowserActionKind.RELOAD),
+    ]
+    assert decision.current_view_ids == ("incomplete-out",)
+    assert decision.reason == "scoped-conservative-fallback"
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_scope_does_not_change_action_when_it_contains_all_uncertain_views() -> None:
+    unknown = Path("/project/content/guide.md")
+    decision = decide_browser_updates(
+        (unknown,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids={"docs"},
+        fallback_scope_views={unknown: {"docs"}},
+    )
+
+    assert [(action.view_id, action.kind) for action in decision.actions] == [
+        ("docs", BrowserActionKind.RELOAD),
+    ]
+    assert decision.reason == "ambiguous-browser-dependency"
