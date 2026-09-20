@@ -1,6 +1,5 @@
 # TODO
 
-- run a focused mutation-testing expansion over `src/kyth/invalidation.py` and `src/kyth/fallback.py`, using `tests/test_invalidation.py`, `tests/test_fallback.py`, and the relevant property tests; add assertions only for behaviorally meaningful survivors;
 - inspect `just cov --lines` for uncovered branches that represent plausible development failures and add focused regressions only where useful;
 - keep `just check`, `just complexity --strict`, and the 90-case Chromium/Firefox acceptance matrix green;
 - periodically rehearse the lifecycle/socket/watcher subset on macOS and Linux across supported Python versions when lifecycle code changes;
