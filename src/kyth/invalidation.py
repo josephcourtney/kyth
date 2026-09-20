@@ -227,6 +227,7 @@ def _known_browser_state(
         complete_resource_views=set(complete_resource_view_ids) & active,
     )
 
+
 def _merge_content_path(
     actions: dict[str, BrowserAction],
     path: Path,
