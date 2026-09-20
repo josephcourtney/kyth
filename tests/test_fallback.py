@@ -20,8 +20,8 @@ def test_rule_validation_rejects_malformed_patterns() -> None:
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_nested_roots_union_matching_source_rules(tmp_path: Path) -> None:
-    root = tmp_path / "project"
+def test_nested_roots_union_matching_source_rules() -> None:
+    root = Path("/project")
     nested = root / "content"
     source = nested / "docs" / "guide.md"
     rules = (
@@ -37,8 +37,8 @@ def test_nested_roots_union_matching_source_rules(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_recursive_glob_matches_zero_or_many_segments(tmp_path: Path) -> None:
-    root = tmp_path / "project"
+def test_recursive_glob_matches_zero_or_many_segments() -> None:
+    root = Path("/project")
     index = FallbackScopeIndex(
         (root,),
         (FallbackScopeRule("content/**", "/docs/**"),),
@@ -50,8 +50,8 @@ def test_recursive_glob_matches_zero_or_many_segments(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_scope_resolution_ignores_query_and_fragment(tmp_path: Path) -> None:
-    root = tmp_path / "project"
+def test_scope_resolution_ignores_query_and_fragment() -> None:
+    root = Path("/project")
     source = root / "content" / "guide.md"
     index = FallbackScopeIndex(
         (root,),
@@ -68,13 +68,13 @@ def test_scope_resolution_ignores_query_and_fragment(tmp_path: Path) -> None:
 
     assert len(resolutions) == 1
     assert resolutions[0].view_ids == ("docs",)
-    assert scope_view_mapping(resolutions) == {source.resolve(): ("docs",)}
+    assert scope_view_mapping(resolutions) == {source: ("docs",)}
 
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_matching_scope_with_no_active_matching_view_resolves_empty(tmp_path: Path) -> None:
-    root = tmp_path / "project"
+def test_matching_scope_with_no_active_matching_view_resolves_empty() -> None:
+    root = Path("/project")
     source = root / "content" / "guide.md"
     index = FallbackScopeIndex(
         (root,),
@@ -92,8 +92,8 @@ def test_matching_scope_with_no_active_matching_view_resolves_empty(tmp_path: Pa
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_unclassifiable_view_url_stays_inside_matched_source_scope(tmp_path: Path) -> None:
-    root = tmp_path / "project"
+def test_unclassifiable_view_url_stays_inside_matched_source_scope() -> None:
+    root = Path("/project")
     source = root / "content" / "guide.md"
     index = FallbackScopeIndex(
         (root,),
@@ -114,8 +114,8 @@ def test_unclassifiable_view_url_stays_inside_matched_source_scope(tmp_path: Pat
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_duplicate_and_overlapping_rules_union_view_scope_idempotently(tmp_path: Path) -> None:
-    root = tmp_path / "project"
+def test_duplicate_and_overlapping_rules_union_view_scope_idempotently() -> None:
+    root = Path("/project")
     source = root / "content" / "guide.md"
     index = FallbackScopeIndex(
         (root,),
