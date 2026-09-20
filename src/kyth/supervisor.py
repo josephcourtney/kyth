@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Self
 
 from kyth.changes import ChangePolicy, ChangeSet, ClassifiedPath, classify_batch
 from kyth.control import ControlService
+from kyth.fallback import FallbackScopeIndex, FallbackScopeResolution, FallbackScopeRule, scope_view_mapping
 from kyth.invalidation import BrowserAction, BrowserActionKind, BrowserUpdateDecision, decide_browser_updates
 from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch, FileOperation
 from kyth.process.manager import ChildProcess
@@ -49,6 +50,7 @@ class SupervisorConfig:
     manifest_paths: tuple[Path, ...] = ()
     restart_patterns: tuple[str, ...] = ()
     external_hmr_patterns: tuple[str, ...] = ()
+    fallback_scopes: tuple[FallbackScopeRule, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +84,7 @@ class Supervisor:
         self._direct_resources = DirectResourceIndex(roots)
         self._render_provenance = RenderProvenanceIndex()
         self._generated = GeneratedManifestIndex(config.manifest_paths)
+        self._fallback_scopes = FallbackScopeIndex(roots, config.fallback_scopes)
         self._change_policy = ChangePolicy(
             restart_patterns=config.restart_patterns,
             external_hmr_patterns=config.external_hmr_patterns,
@@ -287,7 +290,12 @@ class Supervisor:
             self._refresh_provenance()
             self._refresh_changed_manifests(batch.paths)
             stale_outputs = self._generated.mark_sources_changed(batch.paths)
-            changes = classify_batch(batch, policy=self._change_policy)
+            scoped_paths = self._fallback_scopes.matching_source_paths(batch.paths)
+            changes = classify_batch(
+                batch,
+                policy=self._change_policy,
+                fallback_scope_paths=scoped_paths,
+            )
             relevant_paths = self._relevant_browser_paths(changes)
             self._log_change_set(changes, relevant_paths, stale_outputs)
             self._generated.mark_outputs_updated(relevant_paths)
@@ -390,9 +398,13 @@ class Supervisor:
         control = self._require_control()
         views = control.views.snapshot()
         normalized = tuple(self._direct_outputs.normalize_changed_path(path) for path in changed_paths)
-        generated_output_views = self._generated.output_views({view.view_id: view.url for view in views if view.url})
+        view_urls = {view.view_id: view.url for view in views}
+        scope_resolutions = self._fallback_scopes.resolve(normalized, view_urls)
+        generated_output_views = self._generated.output_views({
+            view_id: url for view_id, url in view_urls.items() if url
+        })
         output_views = self._combined_output_views(generated_output_views)
-        return decide_browser_updates(
+        decision = decide_browser_updates(
             normalized,
             known_outputs=self._direct_outputs.known_outputs | self._generated.known_outputs,
             output_views=output_views,
@@ -406,7 +418,10 @@ class Supervisor:
             active_view_ids=tuple(view.view_id for view in views),
             known_data_sources=self._render_provenance.known_data_sources,
             data_source_views=self._render_provenance.stale_data_source_views(normalized),
+            fallback_scope_views=scope_view_mapping(scope_resolutions),
         )
+        self._log_fallback_decisions(decision, scope_resolutions)
+        return decision
 
     def _publish_browser_decision(
         self,
@@ -474,6 +489,8 @@ class Supervisor:
         relevant: set[Path] = set()
         for path in changes.batch.paths:
             normalized = self._direct_outputs.normalize_changed_path(path)
+            if path in changes.external_hmr_paths:
+                continue
             if normalized in manifest_paths:
                 continue
             if normalized in self._generated.known_outputs and not self._generated_output_ready(
@@ -489,6 +506,23 @@ class Supervisor:
             if path in changes.browser_paths:
                 relevant.add(path)
         return tuple(sorted(relevant, key=Path.as_posix))
+
+    @staticmethod
+    def _log_fallback_decisions(
+        decision: BrowserUpdateDecision,
+        resolutions: tuple[FallbackScopeResolution, ...],
+    ) -> None:
+        rules_by_path = {resolution.path: resolution.rules for resolution in resolutions}
+        for fallback in decision.fallbacks:
+            rules = rules_by_path.get(fallback.path, ())
+            logger.debug(
+                "fallback path=%s scoped=%s rules=%s uncertain_views=%s selected_views=%s",
+                fallback.path,
+                fallback.scoped,
+                tuple((rule.source_pattern, rule.url_pattern) for rule in rules),
+                fallback.uncertain_view_ids,
+                fallback.reload_view_ids,
+            )
 
     def _generated_output_ready(self, batch: FileBatch, output: Path) -> bool:
         return any(
