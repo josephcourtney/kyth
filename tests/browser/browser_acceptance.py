@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from kyth.fallback import FallbackScopeRule
 from kyth.model import FileBatch, FileEvent, FileOperation
 from kyth.protocol import ControlEvent
 from kyth.supervisor import Supervisor, SupervisorConfig
@@ -151,6 +152,41 @@ def resource_harness(
 
 
 @pytest.fixture
+def scope_harness(
+    tmp_path: Path,
+    browser: _Browser,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[_Harness]:
+    _seed_resource_fixture(tmp_path)
+    monkeypatch.setenv(RESOURCE_ROOT_ENV, str(tmp_path))
+    with (
+        _app_import_path(),
+        Supervisor(
+            SupervisorConfig(
+                "resource_app:app",
+                port=0,
+                startup_timeout=5.0,
+                shutdown_timeout=1.0,
+                watch_roots=(tmp_path,),
+                fallback_scopes=(
+                    FallbackScopeRule("content/docs/**", "/docs/**"),
+                ),
+            )
+        ) as supervisor,
+    ):
+        assert supervisor.start_child()
+        context = browser.new_context()
+        try:
+            page = context.new_page()
+            origin = _origin(supervisor)
+            page.goto(f"{origin}/docs/", wait_until="load")
+            _wait_for_complete_views(supervisor, 1)
+            yield _Harness(context, page, supervisor, origin, tmp_path)
+        finally:
+            context.close()
+
+
+@pytest.fixture
 def jinja_harness(
     tmp_path: Path,
     browser: _Browser,
@@ -260,6 +296,55 @@ def passthrough_harness(
             yield _Harness(context, page, supervisor, _origin(supervisor), tmp_path)
         finally:
             context.close()
+
+
+def test_fallback_scope_targets_only_matching_active_url(scope_harness: _Harness) -> None:
+    harness = scope_harness
+    admin = harness.context.new_page()
+    admin.goto(f"{harness.origin}/admin/", wait_until="load")
+    _wait_for_complete_views(harness.supervisor, 2)
+    _set_sentinel(harness.page, "docs")
+    _set_sentinel(admin, "admin")
+
+    source = harness.asset("content/docs/scope.json")
+    source.write_text('{"version": 2}', encoding="utf-8")
+    generation = harness.supervisor.state.generation + 1
+    harness.supervisor._handle_change_cycle(
+        FileBatch.from_events([FileEvent(source, FileOperation.MODIFIED)]),
+        _NoPendingBatches(),
+    )
+
+    harness.page.wait_for_function(
+        "() => window.__kythSentinel === undefined",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+    assert _sentinel(admin) == "admin"
+    _wait_for_all_generation(harness.supervisor, generation, expected=2)
+
+
+def test_unconfigured_ambiguous_source_retains_global_reload(
+    resource_harness: _Harness,
+) -> None:
+    harness = resource_harness
+    harness.page.goto(f"{harness.origin}/docs/", wait_until="load")
+    admin = harness.context.new_page()
+    admin.goto(f"{harness.origin}/admin/", wait_until="load")
+    _wait_for_complete_views(harness.supervisor, 2)
+    _set_sentinel(harness.page, "docs")
+    _set_sentinel(admin, "admin")
+
+    source = harness.asset("content/docs/scope.json")
+    source.write_text('{"version": 3}', encoding="utf-8")
+    harness.supervisor._handle_change_cycle(
+        FileBatch.from_events([FileEvent(source, FileOperation.MODIFIED)]),
+        _NoPendingBatches(),
+    )
+
+    for page in (harness.page, admin):
+        page.wait_for_function(
+            "() => window.__kythSentinel === undefined",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
 
 
 def test_client_registers_complete_resource_snapshot(resource_harness: _Harness) -> None:
@@ -1102,6 +1187,11 @@ def _seed_jinja_fixture(root: Path) -> None:
 
 
 def _seed_resource_fixture(root: Path) -> None:
+    scoped = root / "content" / "docs"
+    scoped.mkdir(parents=True)
+    scoped.joinpath("scope.json").write_text('{"version": 1}', encoding="utf-8")
+    root.joinpath("docs.html").write_text(_page("docs"), encoding="utf-8")
+    root.joinpath("admin.html").write_text(_page("admin"), encoding="utf-8")
     root.joinpath("site.css").write_text(
         "body { background-color: rgb(10, 20, 30); }",
         encoding="utf-8",
@@ -1339,6 +1429,22 @@ def _wait_for_render_records(supervisor: Supervisor, expected: int) -> None:
             return
         time.sleep(0.02)
     msg = f"browser did not associate {expected} complete render record(s)"
+    raise AssertionError(msg)
+
+
+def _wait_for_all_generation(
+    supervisor: Supervisor,
+    generation: int,
+    *,
+    expected: int,
+) -> None:
+    deadline = time.monotonic() + REGISTRATION_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        views = supervisor._require_control().views.snapshot()
+        if len(views) == expected and all(view.generation == generation for view in views):
+            return
+        time.sleep(0.02)
+    msg = f"browser did not acknowledge generation {generation} for {expected} views"
     raise AssertionError(msg)
 
 
