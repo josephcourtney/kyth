@@ -4,6 +4,8 @@ import gzip
 from http import HTTPStatus
 from typing import Any
 
+from kyth.injection import client_script
+
 
 async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
     if scope["type"] == "lifespan":
@@ -25,8 +27,14 @@ async def _serve_path(path: str, send: Any) -> None:
         )
     elif path == "/streaming/":
         await _streaming_response(send)
+    elif path == "/streaming-explicit/":
+        await _explicit_streaming_response(send)
+    elif path == "/streaming-csp/":
+        await _explicit_streaming_response(send, csp=True)
     elif path == "/compressed/":
         await _compressed_response(send)
+    elif path == "/compressed-explicit/":
+        await _explicit_compressed_response(send)
     elif path == "/range/":
         await _range_response(send)
     elif path == "/plain/":
@@ -63,8 +71,44 @@ async def _streaming_response(send: Any) -> None:
     })
 
 
+async def _explicit_streaming_response(send: Any, *, csp: bool = False) -> None:
+    script = client_script().encode()
+    headers = [(b"content-type", b"text/html")]
+    if csp:
+        headers.append((b"content-security-policy", b"default-src 'self'"))
+    await send({
+        "type": "http.response.start",
+        "status": HTTPStatus.OK,
+        "headers": headers,
+    })
+    await send({
+        "type": "http.response.body",
+        "body": b'<html><body><h1 id="status">explicit-streaming</h1>',
+        "more_body": True,
+    })
+    await send({
+        "type": "http.response.body",
+        "body": script + b"</body></html>",
+        "more_body": False,
+    })
+
+
 async def _compressed_response(send: Any) -> None:
     body = gzip.compress(b"<html><body>compressed</body></html>")
+    await _response(
+        send,
+        HTTPStatus.OK,
+        [
+            (b"content-type", b"text/html"),
+            (b"content-encoding", b"gzip"),
+        ],
+        body,
+    )
+
+
+async def _explicit_compressed_response(send: Any) -> None:
+    source = f"<html><body>compressed{client_script()}</body></html>".encode()
+    body = gzip.compress(source)
     await _response(
         send,
         HTTPStatus.OK,
