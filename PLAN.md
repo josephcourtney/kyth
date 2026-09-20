@@ -366,7 +366,7 @@ Phase 10 is complete when unsupported HTML can opt into the existing synchroniza
 
 ## Phase 11: finer conservative fallback scopes
 
-**Status: planned; Phase 10 prerequisite is delivered.**
+**Status: delivered.**
 
 Replace the current binary choice between precise targeting and application-wide conservative reload with explicitly configured conservative scopes. Preserve application-wide reload as the default whenever no trusted scope rule applies.
 
@@ -508,14 +508,7 @@ Phase 11 is complete when an ambiguous browser-facing source can be deliberately
 
 ### Sequencing between Phases 10 and 11
 
-Implement Phase 10 first. It expands which browser documents can participate in the existing view/provenance protocol without changing invalidation policy.
-
-Then implement Phase 11 in two commits/steps:
-
-1. per-path uncertainty refactor with behavior unchanged;
-2. scope-rule configuration and narrowing.
-
-After both phases, repeat the normal static/test gates and the Chromium/Firefox browser matrix. Re-run the macOS/Linux lifecycle matrix only if process/socket/watcher code changes; neither phase should require such changes by design.
+**Status: completed.** Phase 10 was delivered first, followed by Phase 11's behavior-preserving per-path uncertainty refactor and then scope-rule configuration/narrowing. The normal static/test gates, strict complexity gate, and Chromium/Firefox browser matrix pass after both phases. No process/socket/watcher mechanism changed, so the existing supported-platform lifecycle rehearsal remains applicable.
 
 ## Cross-cutting implementation constraints
 
