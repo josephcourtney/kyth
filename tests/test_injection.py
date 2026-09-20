@@ -3,13 +3,15 @@ from __future__ import annotations
 import asyncio
 import gzip
 from http import HTTPStatus
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from kyth.injection import HTMLInjectionMiddleware, InjectionConfig, client_script, depend_on
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 ASGIMessage = dict[str, Any]
 
