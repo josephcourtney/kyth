@@ -136,7 +136,7 @@ The injected client is responsible for:
 - applying typed update events;
 - performing full reload as the correctness fallback.
 
-Kyth should avoid changing application semantics beyond development synchronization. Unsupported response forms, such as arbitrary streaming HTML, may fall back to explicit integration or reduced functionality rather than fragile response rewriting.
+Kyth should avoid changing application semantics beyond development synchronization. Unsupported response forms, such as streaming or explicitly encoded HTML, may opt into the same browser protocol through explicit client inclusion rather than fragile response rewriting. Kyth must leave such bodies untouched while preserving the same generation, view, provenance, CSP, reconnect, and reload semantics.
 
 ## Views, renders, and provenance
 
@@ -184,7 +184,7 @@ Framework/template adapters may add precise provenance without requiring applica
 
 ### Explicit integration
 
-Applications may optionally register custom dependencies, data-refresh behavior, richer state-preservation hooks, or custom readiness checks. Failure to opt in must still leave generic reload behavior correct.
+Applications may optionally include the Kyth client explicitly for non-injectable HTML, register custom dependencies, data-refresh behavior, richer state-preservation hooks, or custom readiness checks. Explicit client inclusion reuses the normal browser-control protocol rather than defining a second synchronization path. Failure to opt in must still leave generic reload behavior correct for automatically injectable pages.
 
 ## Resource update policy
 
