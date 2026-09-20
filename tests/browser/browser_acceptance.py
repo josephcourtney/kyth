@@ -973,9 +973,7 @@ def test_explicit_streaming_html_registers_and_reloads_after_restart(
     harness = passthrough_harness
     harness.page.goto(f"{harness.origin}/streaming-explicit/", wait_until="load")
     _wait_for_registered_path(harness.supervisor, "/streaming-explicit/")
-    assert harness.page.evaluate(
-        "() => document.querySelectorAll('script[data-kyth-control]').length === 1"
-    )
+    assert harness.page.evaluate("() => document.querySelectorAll('script[data-kyth-control]').length === 1")
 
     _set_sentinel(harness.page, "discard")
     generation = harness.supervisor.state.generation + 1
@@ -995,9 +993,7 @@ def test_explicit_streaming_html_connects_under_csp(
     harness.page.goto(f"{harness.origin}/streaming-csp/", wait_until="load")
 
     _wait_for_registered_path(harness.supervisor, "/streaming-csp/")
-    assert harness.page.evaluate(
-        "() => document.querySelectorAll('script[data-kyth-control]').length === 1"
-    )
+    assert harness.page.evaluate("() => document.querySelectorAll('script[data-kyth-control]').length === 1")
 
 
 def test_explicit_compressed_html_registers(
@@ -1007,9 +1003,7 @@ def test_explicit_compressed_html_registers(
     harness.page.goto(f"{harness.origin}/compressed-explicit/", wait_until="load")
 
     _wait_for_registered_path(harness.supervisor, "/compressed-explicit/")
-    assert harness.page.evaluate(
-        "() => document.querySelectorAll('script[data-kyth-control]').length === 1"
-    )
+    assert harness.page.evaluate("() => document.querySelectorAll('script[data-kyth-control]').length === 1")
 
 
 def test_explicit_streaming_jinja_provenance_remains_selective(
