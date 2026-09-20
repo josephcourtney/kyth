@@ -51,7 +51,7 @@ Kyth uses several deliberately different fixture applications rather than one un
 | --- | --- |
 | Generated lifecycle apps in `tests/test_lifecycle.py` | ordinary restart, rapid same-size source replacement, syntax/import startup failure and recovery, explicit lifespan startup failure, apps without lifespan support, delayed readiness, hanging shutdown, unexpected post-ready child exit, persistent application/control sockets, HTML injection, targeted SSE decisions |
 | `tests/browser/apps/resource_app.py` | direct HTML output, CSS, image/SVG, JavaScript, independent tabs, duplicate stylesheet references, query-bearing resource URLs, `srcset`/`picture` unsafe images, CSS-observed assets, fonts, CSP, fragment HTML, multiple stylesheet updates, mixed update types, unknown resources, and readiness-gated restart failure |
-| `tests/browser/apps/passthrough_app.py` | ordinary injectable HTML contrasted with streaming HTML, explicit gzip content encoding, byte-range responses, and non-HTML bodies that must pass through unchanged |
+| `tests/browser/apps/passthrough_app.py` | ordinary injectable HTML; unintegrated pass-through streaming/compressed/range/non-HTML responses; and explicitly synchronized streaming, CSP-protected, and gzip-encoded HTML |
 | `tests/browser/apps/jinja_app.py` | real optional Jinja rendering with inheritance and includes, validating runtime render provenance and selective/shared-template invalidation |
 | Manifest-backed generated fixture | explicit source→output dependency, stale-output deferral, and browser reload only after the generated output is rebuilt |
 
@@ -77,7 +77,7 @@ just browser-test
 
 The dedicated test environment supplies Playwright plus Jinja only for acceptance execution; neither becomes a Kyth runtime dependency.
 
-Every browser acceptance test is parameterized over Chromium and Firefox. The current matrix verifies:
+Every browser acceptance test is parameterized over Chromium and Firefox. The current 86-case matrix verifies:
 
 - initial injected-client registration and complete resource snapshots;
 - successful server restart → document reload;
@@ -100,6 +100,7 @@ Every browser acceptance test is parameterized over Chromium and Firefox. The cu
 - control-stream establishment before initial browser registration, preventing registration-before-SSE missed-event races;
 - duplicate reload events for the current generation being ignored;
 - streaming/compressed/ranged/non-HTML pass-through behavior;
+- explicit streaming/encoded HTML registration, restart recovery, CSP compatibility, and selective Jinja provenance through the same browser protocol;
 - real Jinja include/base-template invalidation;
 - generated source changes waiting for regenerated output before navigation, including transient deletion and sibling-output partial rebuilds.
 
