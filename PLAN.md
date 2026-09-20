@@ -251,6 +251,272 @@ Delivered:
 
 These are deliberately small typed/configured extensions. Do not replace them with a plugin framework unless a concrete second implementation requires a capability that cannot be expressed through the existing provenance, control-event, readiness, or classification mechanisms.
 
+## Phase 10: explicit synchronization for non-injectable HTML
+
+**Status: planned.**
+
+Extend the existing browser synchronization protocol to HTML responses Kyth deliberately does not rewrite, especially streaming and explicitly encoded responses. This is an explicit application integration, not a second browser-control mechanism.
+
+The invariant is:
+
+> An explicitly integrated page must register and synchronize exactly like an automatically injected page. The only difference is who places the client script into the HTML.
+
+### 10.1 Request-local client bootstrap context
+
+Create one request-local bootstrap context for every Kyth-managed HTTP request before the wrapped application runs. It should contain the same information automatic injection already embeds:
+
+- control URL;
+- session token;
+- candidate/committed generation;
+- render identifier;
+- per-response CSP nonce;
+- whether explicit client inclusion has been requested;
+- whether response headers have already been committed.
+
+Use a context-local mechanism so concurrent requests cannot observe one another's bootstrap state. Keep the browser protocol and client JavaScript unchanged.
+
+### 10.2 Public explicit-inclusion helper
+
+Add one narrow public helper, provisionally `kyth.injection.client_script()`, that returns the complete Kyth `<script>` element for the current request.
+
+Required behavior:
+
+- inside an active Kyth-managed request, return the same client URL/data attributes used by transparent injection and mark the request as explicitly integrated;
+- outside an active Kyth-managed request, return an empty string so a development-only integration does not alter normal application output;
+- if called after Kyth has committed the response headers/body boundary required for safe CSP adjustment, fail conspicuously rather than silently claim synchronization support;
+- document template auto-escaping requirements explicitly; do not add a template-framework abstraction merely to mark the returned HTML safe.
+
+The helper is an opt-in escape hatch for response forms Kyth cannot safely mutate. It must not become necessary for ordinary buffered HTML.
+
+### 10.3 Middleware cooperation without body rewriting
+
+Teach the injection middleware to distinguish three HTML paths:
+
+1. **automatic injection** — current behavior for ordinary complete HTML;
+2. **explicit inclusion** — the application has emitted the helper result, so Kyth must not inject a second client;
+3. **unintegrated pass-through** — unsupported response remains untouched apart from the existing development cache policy.
+
+For explicitly integrated responses, Kyth should:
+
+- leave body bytes and streaming boundaries unchanged;
+- apply the same CSP allowance using the request's bootstrap nonce and control origin before the stored response start is released;
+- retain development `no-store` cache semantics;
+- permit explicit integration even when the body is streaming or explicitly compressed, because Kyth no longer needs to decode or rewrite the body;
+- preserve existing HEAD/range/status semantics and never fabricate a client for responses that are not complete browser documents.
+
+The existing buffering of `http.response.start` until the first body message is sufficient for common streaming responses where the helper is evaluated while constructing the first chunk. Do not buffer arbitrary streaming bodies.
+
+### 10.4 Provenance and generation parity
+
+Explicitly integrated documents must participate in the same synchronization state as injected documents.
+
+Deliver:
+
+- report captured render provenance when either automatic injection succeeded or explicit inclusion was activated;
+- use the same render identifier in the explicit script and provenance record;
+- register the same per-tab view/resource snapshot;
+- use the same EventSource, registration sequence, generation, reconnect, narrow-update, data-update, and full-reload behavior;
+- prevent double registration/client startup when an otherwise injectable response also uses the explicit helper.
+
+No new SSE event kind or browser-view model should be introduced.
+
+### 10.5 Failure semantics
+
+Explicit integration is allowed to be application code, but it must still fail safely.
+
+Required behavior:
+
+- malformed or late explicit inclusion must be visible in development diagnostics;
+- a page that never includes either automatic or explicit client integration is simply outside browser synchronization and must not be recorded as an active synchronized view;
+- failure to report optional render provenance must reduce precision, not prevent the explicitly included browser client from reconnecting and conservatively reloading;
+- startup/restart readiness semantics remain unchanged.
+
+### 10.6 Verification
+
+Add deterministic middleware/component tests for:
+
+- explicit helper context isolation across concurrent requests;
+- empty output outside a managed request;
+- ordinary buffered HTML with explicit inclusion receiving exactly one client;
+- streaming HTML with explicit inclusion preserving chunking while receiving correct CSP/cache headers;
+- explicitly encoded HTML remaining byte-for-byte body pass-through;
+- late helper use failing conspicuously;
+- explicit render provenance using the same render ID as browser registration.
+
+Extend real-browser acceptance with at least:
+
+- a streaming page using explicit inclusion that registers and reloads across a Python restart;
+- CSP-protected streaming HTML using explicit inclusion;
+- an explicitly integrated streaming Jinja/render-provenance page whose unrelated template change does not reload it.
+
+Do not add separate browser acceptance cases for every pass-through response form unless the browser-observable semantics differ.
+
+### 10.7 Explicit non-goals
+
+Do not:
+
+- make arbitrary streaming HTML automatically injectable;
+- buffer an entire stream to recover transparent injection;
+- add a second control server or transport;
+- require a framework-specific response type;
+- add a general template-extension/plugin API;
+- make explicit inclusion responsible for application state migration.
+
+Phase 10 is complete when unsupported HTML can opt into the existing synchronization protocol with one explicit script inclusion and gains the same correctness/recovery semantics as transparently injected pages.
+
+## Phase 11: finer conservative fallback scopes
+
+**Status: planned after Phase 10.**
+
+Replace the current binary choice between precise targeting and application-wide conservative reload with explicitly configured conservative scopes. Preserve application-wide reload as the default whenever no trusted scope rule applies.
+
+The invariant is:
+
+> Scope configuration may narrow uncertainty only when the user has explicitly asserted that a class of changed sources cannot affect views outside the configured URL scope. Missing scope information must never narrow the existing fallback.
+
+### 11.1 Scope rule model
+
+Introduce a small policy type such as:
+
+`FallbackScopeRule(source_pattern, url_pattern)`
+
+and repeated CLI configuration provisionally shaped as:
+
+`--fallback-scope SOURCE_GLOB URL_GLOB`
+
+Examples:
+
+`--fallback-scope 'templates/admin/**' '/admin/**'`
+
+`--fallback-scope 'content/docs/**' '/docs/**'`
+
+Rules are completeness assertions, not heuristics. Document that an incorrect rule can suppress a reload for an actually affected view, just as incorrect explicit dependency metadata can be wrong.
+
+Keep V1 rule semantics deliberately small:
+
+- source patterns are POSIX-style globs matched against paths relative to configured development roots;
+- for nested/multiple roots, evaluate every valid root-relative representation and union matching rules;
+- URL patterns match the decoded normalized URL path only; ignore query and fragment;
+- multiple matching rules for one source path union their URL scopes;
+- repeated or overlapping rules are deterministic and idempotent;
+- a matching rule whose URL pattern currently matches no active view is a valid scoped result, not an instruction to reload all.
+
+Do not introduce named scope graphs or a configuration language until repetition demonstrates a need.
+
+### 11.2 First refactor invalidation without changing behavior
+
+Before enabling scoped behavior, remove the current early global-ambiguity shortcut from `decide_browser_updates` and represent uncertainty per changed path.
+
+Preserve today's semantics exactly:
+
+- known direct/render/data/resource dependencies remain precise;
+- incomplete provenance/resource snapshots reload every uncertain active view;
+- completely unknown browser-relevant paths reload every active view;
+- action precedence remains `reload > narrow update`;
+- generated-output deferral retains precedence where it does today.
+
+Land this as an independently tested refactor. The refactored implementation should still produce application-wide fallback whenever no scope mapping is supplied.
+
+### 11.3 Make scope-matched sources browser-relevant
+
+A configured source rule is also an assertion that matching changes can affect browser output. Therefore matching scope sources must enter browser invalidation even when their suffix is not in the generic browser-suffix set and they are not yet known through render/manifest provenance.
+
+Classification precedence should remain:
+
+`server restart > external HMR ownership > configured fallback scope > generic browser suffix > other`
+
+A Python/restart-worthy change therefore still follows restart semantics, and an externally owned frontend path remains outside Kyth browser action.
+
+### 11.4 Scoped uncertainty resolution
+
+For each browser-relevant changed path:
+
+1. compute all known precise affected/current relationships first;
+2. identify only the active views whose dependency relationship to that path remains uncertain;
+3. if the path matches one or more fallback-scope rules, intersect that uncertain set with the union of active views whose URL paths match those rules;
+4. reload those scoped uncertain views;
+5. mark uncertain views outside the asserted scope current for that path;
+6. if the path matches no scope rule, retain the existing fallback over the entire uncertain set.
+
+Known affected views are never suppressed by a scope rule. A precise dependency outside a configured fallback scope still wins and receives its normal action.
+
+For batches:
+
+- union affected views across all paths;
+- an unmatched ambiguous path may widen its uncertainty to all active views even when another path is scoped;
+- full reload still dominates CSS/asset/data updates for the same view;
+- scope rules do not narrow `SERVER_RESTART` browser reload semantics in this phase;
+- generated-output readiness/deferral remains independent of fallback scoping.
+
+### 11.5 Separate path/URL matching from invalidation policy
+
+Keep glob/URL interpretation out of the invalidation core.
+
+The supervisor should compute a mapping conceptually equivalent to:
+
+`changed path -> scoped candidate view IDs`
+
+and pass that explicit mapping into the pure browser-update decision function. Absence of a key means "no trusted scope; use ordinary conservative fallback." Presence with an empty view set means "the configured scope currently contains no active views."
+
+This keeps `decide_browser_updates` deterministic and easy to property-test without knowing about watch roots, URL decoding, or CLI syntax.
+
+### 11.6 Observability
+
+Scoped fallback must remain explainable.
+
+Verbose diagnostics should expose, for each ambiguous path:
+
+- whether a fallback scope matched;
+- the matching source/URL rule or rules;
+- active views considered uncertain;
+- views selected by the conservative scope;
+- whether an unmatched path caused escalation to broader fallback.
+
+Use a stable reason such as `scoped-conservative-fallback` for the final browser decision when scoping materially narrowed an otherwise broader reload. Do not add persistent diagnostic history solely for this feature.
+
+### 11.7 Verification
+
+Add pure policy/property tests for:
+
+- no-rule behavior being identical to current application-wide fallback;
+- one source rule targeting only matching URL views;
+- several matching rules unioning views;
+- overlapping/duplicate rules being idempotent;
+- a matching scope with zero active views causing no reload;
+- an unmatched ambiguous path retaining global fallback;
+- mixed known precise and scoped-uncertain dependencies;
+- known affected views outside the configured scope still receiving actions;
+- incomplete render/resource provenance narrowing only its uncertain portion;
+- mixed batches preserving reload dominance;
+- query strings/fragments not changing URL-scope membership;
+- nested watch roots producing conservative union behavior.
+
+Add a small real-browser acceptance scenario with two independently scoped pages and an otherwise unknown source file. Changing a source in one configured scope should disturb only that scope; removing the scope configuration should restore application-wide conservative reload.
+
+### 11.8 Explicit non-goals
+
+Do not:
+
+- infer scopes automatically from URL/source naming similarity;
+- apply scoped fallback to server-restart paths in the first implementation;
+- introduce route-framework awareness;
+- build a general dependency graph/configuration DSL;
+- weaken precise runtime/manifests/direct-resource provenance in favor of scope rules;
+- silently treat a malformed rule as a global or empty scope.
+
+Phase 11 is complete when an ambiguous browser-facing source can be deliberately constrained to a trusted set of active URL views while every unconfigured ambiguity retains today's conservative application-wide behavior.
+
+### Sequencing between Phases 10 and 11
+
+Implement Phase 10 first. It expands which browser documents can participate in the existing view/provenance protocol without changing invalidation policy.
+
+Then implement Phase 11 in two commits/steps:
+
+1. per-path uncertainty refactor with behavior unchanged;
+2. scope-rule configuration and narrowing.
+
+After both phases, repeat the normal static/test gates and the Chromium/Firefox browser matrix. Re-run the macOS/Linux lifecycle matrix only if process/socket/watcher code changes; neither phase should require such changes by design.
+
 ## Cross-cutting implementation constraints
 
 ### Keep the supervisor deterministic
