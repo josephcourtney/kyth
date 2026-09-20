@@ -20,7 +20,7 @@ Hypothesis properties run in the default suite and are marked `property_based` p
 - deterministic/idempotent filesystem batch canonicalization;
 - associative batch merging;
 - exhaustive/disjoint change classification;
-- conservative fallback for unknown dependencies;
+- conservative fallback for unknown dependencies, including scoped reload/current partitioning;
 - complete accounting of affected/current views;
 - monotonic view generations and registration-sequence ordering;
 - SSE serialization;
@@ -50,7 +50,7 @@ Kyth uses several deliberately different fixture applications rather than one un
 | Fixture | Purpose / scenarios |
 | --- | --- |
 | Generated lifecycle apps in `tests/test_lifecycle.py` | ordinary restart, rapid same-size source replacement, syntax/import startup failure and recovery, explicit lifespan startup failure, apps without lifespan support, delayed readiness, hanging shutdown, unexpected post-ready child exit, persistent application/control sockets, HTML injection, targeted SSE decisions |
-| `tests/browser/apps/resource_app.py` | direct HTML output, CSS, image/SVG, JavaScript, independent tabs, duplicate stylesheet references, query-bearing resource URLs, `srcset`/`picture` unsafe images, CSS-observed assets, fonts, CSP, fragment HTML, multiple stylesheet updates, mixed update types, unknown resources, and readiness-gated restart failure |
+| `tests/browser/apps/resource_app.py` | direct HTML output, CSS, image/SVG, JavaScript, independent tabs, duplicate stylesheet references, query-bearing resource URLs, `srcset`/`picture` unsafe images, CSS-observed assets, fonts, CSP, fragment HTML, multiple stylesheet updates, mixed update types, unknown resources, configured fallback scopes, and readiness-gated restart failure |
 | `tests/browser/apps/passthrough_app.py` | ordinary injectable HTML; unintegrated pass-through streaming/compressed/range/non-HTML responses; and explicitly synchronized streaming, CSP-protected, and gzip-encoded HTML |
 | `tests/browser/apps/jinja_app.py` | real optional Jinja rendering with inheritance and includes, validating runtime render provenance and selective/shared-template invalidation |
 | Manifest-backed generated fixture | explicit source→output dependency, stale-output deferral, and browser reload only after the generated output is rebuilt |
@@ -77,7 +77,7 @@ just browser-test
 
 The dedicated test environment supplies Playwright plus Jinja only for acceptance execution; neither becomes a Kyth runtime dependency.
 
-Every browser acceptance test is parameterized over Chromium and Firefox. The current 86-case matrix verifies:
+Every browser acceptance test is parameterized over Chromium and Firefox. The current 90-case matrix verifies:
 
 - initial injected-client registration and complete resource snapshots;
 - successful server restart → document reload;
@@ -93,6 +93,7 @@ Every browser acceptance test is parameterized over Chromium and Firefox. The cu
 - mixed narrow-update kinds collapsing to reload;
 - multiple stylesheet updates as one narrow transaction;
 - unknown-resource conservative reload;
+- explicit source-glob → URL-glob fallback scoping for otherwise-unknown browser-facing inputs, plus restoration of application-wide reload when no scope is configured;
 - direct HTML output reload;
 - CSP-compatible injection/control connection;
 - HTML fragments without closing tags;
