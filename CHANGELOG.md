@@ -32,6 +32,8 @@ Items should be categorized under these headings:
 - add `kyth:data-update`, `kyth:server-error`, `kyth:before-reload`, and `kyth:restore-state` browser integration events
 - add synchronous/asynchronous `register_readiness_check` application readiness hooks
 - add `kyth.injection.client_script()` for explicit synchronization of streaming or otherwise non-injectable HTML through the existing browser-control protocol
+- add repeated `--fallback-scope SOURCE_GLOB URL_GLOB` configuration for trusted narrowing of otherwise-conservative browser reload scopes
+- add pure fallback-scope matching/validation plus property and real-browser coverage for scoped versus application-wide conservative invalidation
 - add hardening coverage for registration ordering, duplicate tabs, reconnect/restart races, generated-output deletion and partial rebuilds, and atomic-save watcher behavior
 - add a macOS/Linux lifecycle rehearsal matrix across Python 3.12-3.14
 - add a narrow `just mutation` diagnostic for change-classification and protocol policy
@@ -47,6 +49,9 @@ Items should be categorized under these headings:
 - strengthen filesystem duplicate detection with change-time and file-identity metadata so atomic replacements are not suppressed solely because size and modification time match
 - bound per-browser SSE queues and disconnect slow subscribers on overflow so reconnect synchronization replaces unbounded pending-event growth
 - use request-local bootstrap metadata so automatic and explicit client inclusion share generation, render identity, CSP nonce, provenance, registration, reconnect, and reload semantics without rewriting explicit response bodies
+- resolve browser invalidation uncertainty per changed path so configured scopes can narrow only uncertain views while precise dependency relationships retain precedence
+- classify fallback-scoped sources as browser-relevant regardless of ordinary browser suffix, while preserving server-restart and external-HMR precedence
+- expose scoped-fallback rule, uncertain-view, and selected-view details in verbose decision diagnostics
 
 ### Fixed
 
