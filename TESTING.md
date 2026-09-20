@@ -125,15 +125,15 @@ Coverage is diagnostic rather than a target by itself. Prefer important failure 
 
 ## Mutation testing
 
-The first deliberately narrow mutation slice covers `src/kyth/changes.py` and `src/kyth/protocol.py`. Run it with:
+The deliberately narrow mutation slice covers the pure policy modules `src/kyth/changes.py`, `src/kyth/fallback.py`, `src/kyth/invalidation.py`, and `src/kyth/protocol.py`. Run it with:
 
 ```console
 just mutation
 ```
 
-Mutation execution uses plain pytest assertions and disables bytecode writes so the property-test layer retains its small-test filesystem isolation. The initial slice generated 103 mutants: 85 were killed and 18 were skipped, with no surviving, timeout, or suspicious mutants reported.
+Mutation execution uses plain pytest assertions and disables bytecode writes so the property-test layer retains its small-test filesystem isolation. The current slice generated 772 mutants: 752 were killed and 20 were skipped, with no surviving, timeout, or suspicious mutants reported.
 
-Mutation testing is diagnostic rather than a release score gate. Expand the slice to another pure policy/provenance module only when survivors are likely to reveal a meaningful assertion gap; do not mutate subprocess or browser mechanisms merely to increase a headline score.
+Mutation testing is diagnostic rather than a release score gate. The current policy slice is broad enough for the 1.0 boundary; expand it further only when a concrete policy/provenance risk suggests likely actionable survivors. Do not mutate subprocess or browser mechanisms merely to increase a headline score.
 
 ## Release artifact smoke
 
