@@ -31,6 +31,7 @@ Items should be categorized under these headings:
 - add targeted `data-update` and non-navigating `server-error` control events
 - add `kyth:data-update`, `kyth:server-error`, `kyth:before-reload`, and `kyth:restore-state` browser integration events
 - add synchronous/asynchronous `register_readiness_check` application readiness hooks
+- add `kyth.injection.client_script()` for explicit synchronization of streaming or otherwise non-injectable HTML through the existing browser-control protocol
 - add hardening coverage for registration ordering, duplicate tabs, reconnect/restart races, generated-output deletion and partial rebuilds, and atomic-save watcher behavior
 - add a macOS/Linux lifecycle rehearsal matrix across Python 3.12-3.14
 - add a narrow `just mutation` diagnostic for change-classification and protocol policy
@@ -45,6 +46,7 @@ Items should be categorized under these headings:
 - rekey duplicated-tab view identities when two live documents inherit the same tab-scoped identifier
 - strengthen filesystem duplicate detection with change-time and file-identity metadata so atomic replacements are not suppressed solely because size and modification time match
 - bound per-browser SSE queues and disconnect slow subscribers on overflow so reconnect synchronization replaces unbounded pending-event growth
+- use request-local bootstrap metadata so automatic and explicit client inclusion share generation, render identity, CSP nonce, provenance, registration, reconnect, and reload semantics without rewriting explicit response bodies
 
 ### Fixed
 
