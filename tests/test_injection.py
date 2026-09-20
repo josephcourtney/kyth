@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import gzip
 from http import HTTPStatus
+from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from kyth.injection import HTMLInjectionMiddleware, InjectionConfig
+from kyth.injection import HTMLInjectionMiddleware, InjectionConfig, client_script, depend_on
 
 ASGIMessage = dict[str, Any]
 
@@ -254,3 +258,283 @@ async def test_non_html_response_disables_development_caching() -> None:
     assert headers[b"cache-control"] == b"no-store"
     assert b"etag" not in headers
     assert sent[1]["body"] == b"window.VERSION = 1;"
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_explicit_client_script_is_empty_outside_managed_request() -> None:
+    assert client_script() == ""
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_explicit_client_inclusion_preserves_streaming_body_and_rewrites_headers() -> None:
+    sent: list[ASGIMessage] = []
+    emitted_script = ""
+
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send is async by contract
+        sent.append(message)
+
+    async def app(_scope, _receive, send) -> None:
+        nonlocal emitted_script
+        emitted_script = client_script()
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [
+                (b"content-type", b"text/html"),
+                (b"cache-control", b"public, max-age=3600"),
+                (b"etag", b'"stream-v1"'),
+                (b"content-security-policy", b"default-src 'self'"),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"<html><body>",
+            "more_body": True,
+        })
+        await send({
+            "type": "http.response.body",
+            "body": emitted_script.encode() + b"</body></html>",
+            "more_body": False,
+        })
+
+    middleware = HTMLInjectionMiddleware(
+        app,
+        InjectionConfig("http://127.0.0.1:9001", "token", 4),
+    )
+    await middleware({"type": "http", "method": "GET", "headers": []}, _receive, capture)
+
+    assert sent[1]["body"] == b"<html><body>"
+    assert sent[2]["body"] == emitted_script.encode() + b"</body></html>"
+    assert sum(bytes(message.get("body", b"")).count(b"data-kyth-control") for message in sent) == 1
+    headers = dict(sent[0]["headers"])
+    assert headers[b"cache-control"] == b"no-store"
+    assert b"etag" not in headers
+    policy = headers[b"content-security-policy"].decode()
+    assert "script-src 'self' 'nonce-" in policy
+    assert "connect-src 'self' http://127.0.0.1:9001" in policy
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_explicit_client_prevents_automatic_double_injection() -> None:
+    sent: list[ASGIMessage] = []
+
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send is async by contract
+        sent.append(message)
+
+    async def app(_scope, _receive, send) -> None:
+        script = client_script().encode()
+        body = b"<html><body>" + script + b"</body></html>"
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [
+                (b"content-type", b"text/html"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        })
+        await send({"type": "http.response.body", "body": body, "more_body": False})
+
+    middleware = HTMLInjectionMiddleware(
+        app,
+        InjectionConfig("http://127.0.0.1:9001", "token", 2),
+    )
+    await middleware({"type": "http", "method": "GET", "headers": []}, _receive, capture)
+
+    body = bytes(sent[1]["body"])
+    assert body.count(b"/client.js?token=token") == 1
+    assert int(dict(sent[0]["headers"])[b"content-length"]) == len(body)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_explicit_client_preserves_content_encoded_body_bytes() -> None:
+    sent: list[ASGIMessage] = []
+    compressed = b""
+
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send is async by contract
+        sent.append(message)
+
+    async def app(_scope, _receive, send) -> None:
+        nonlocal compressed
+        source = f"<html><body>{client_script()}</body></html>".encode()
+        compressed = gzip.compress(source)
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [
+                (b"content-type", b"text/html"),
+                (b"content-encoding", b"gzip"),
+                (b"content-length", str(len(compressed)).encode()),
+                (b"content-security-policy", b"default-src 'self'"),
+            ],
+        })
+        await send({"type": "http.response.body", "body": compressed, "more_body": False})
+
+    middleware = HTMLInjectionMiddleware(
+        app,
+        InjectionConfig("http://127.0.0.1:9001", "token", 3),
+    )
+    await middleware({"type": "http", "method": "GET", "headers": []}, _receive, capture)
+
+    assert sent[1]["body"] == compressed
+    assert b"data-kyth-control" in gzip.decompress(compressed)
+    headers = dict(sent[0]["headers"])
+    assert headers[b"content-encoding"] == b"gzip"
+    assert int(headers[b"content-length"]) == len(compressed)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_explicit_client_context_is_isolated_between_concurrent_requests() -> None:
+    entered = 0
+    ready = asyncio.Event()
+    scripts: list[str] = []
+
+    async def app(_scope, _receive, send) -> None:
+        nonlocal entered
+        entered += 1
+        if entered == 2:
+            ready.set()
+        await ready.wait()
+        script = client_script()
+        scripts.append(script)
+        body = f"<html><body>{script}</body></html>".encode()
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [(b"content-type", b"text/html")],
+        })
+        await send({"type": "http.response.body", "body": body})
+
+    middleware = HTMLInjectionMiddleware(
+        app,
+        InjectionConfig("http://127.0.0.1:9001", "token", 5),
+    )
+    outputs: tuple[list[ASGIMessage], list[ASGIMessage]] = ([], [])
+
+    async def run(index: int) -> None:
+        async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send is async by contract
+            outputs[index].append(message)
+
+        await middleware(
+            {"type": "http", "method": "GET", "path": f"/{index}", "headers": []},
+            _receive,
+            capture,
+        )
+
+    await asyncio.gather(run(0), run(1))
+
+    assert len(scripts) == 2
+    assert scripts[0] != scripts[1]
+    assert all('data-kyth-generation="5"' in script for script in scripts)
+    assert all(len(messages) == 2 for messages in outputs)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_explicit_client_use_after_stream_headers_commit_fails() -> None:
+    sent: list[ASGIMessage] = []
+
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send is async by contract
+        sent.append(message)
+
+    async def app(_scope, _receive, send) -> None:
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [(b"content-type", b"text/html")],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"<html><body>",
+            "more_body": True,
+        })
+        client_script()
+
+    middleware = HTMLInjectionMiddleware(
+        app,
+        InjectionConfig("http://127.0.0.1:9001", "token", 1),
+    )
+
+    with pytest.raises(RuntimeError, match="before response headers are committed"):
+        await middleware({"type": "http", "method": "GET", "headers": []}, _receive, capture)
+
+    assert len(sent) == 2
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_explicit_client_rejects_non_document_response() -> None:
+    async def discard(_message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send is async by contract
+        return None
+
+    async def app(_scope, _receive, send) -> None:
+        client_script()
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [(b"content-type", b"text/plain")],
+        })
+        await send({"type": "http.response.body", "body": b"plain"})
+
+    middleware = HTMLInjectionMiddleware(
+        app,
+        InjectionConfig("http://127.0.0.1:9001", "token", 1),
+    )
+
+    with pytest.raises(RuntimeError, match="requires an HTML document response"):
+        await middleware({"type": "http", "method": "GET", "headers": []}, _receive, discard)
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+@pytest.mark.asyncio
+async def test_explicit_client_and_render_provenance_share_render_identity(tmp_path: Path) -> None:
+    sent: list[ASGIMessage] = []
+    dependency = tmp_path / "template.html"
+    dependency.write_text("template", encoding="utf-8")
+
+    async def capture(message: ASGIMessage) -> None:  # ruff: ignore[unused-async] - ASGI send is async by contract
+        sent.append(message)
+
+    async def app(_scope, _receive, send) -> None:
+        script = client_script()
+        assert depend_on(dependency)
+        await send({
+            "type": "http.response.start",
+            "status": HTTPStatus.OK,
+            "headers": [(b"content-type", b"text/html")],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"<html><body>",
+            "more_body": True,
+        })
+        await send({
+            "type": "http.response.body",
+            "body": script.encode() + b"</body></html>",
+            "more_body": False,
+        })
+
+    middleware = HTMLInjectionMiddleware(
+        app,
+        InjectionConfig("http://127.0.0.1:9001", "token", 9),
+    )
+    reporter = AsyncMock()
+    with patch("kyth.injection.middleware.report_render_record", reporter):
+        await middleware({"type": "http", "method": "GET", "headers": []}, _receive, capture)
+
+    reporter.assert_awaited_once()
+    record = reporter.await_args.args[2]
+    assert f'data-kyth-render-id="{record.render_id}"'.encode() in bytes(sent[2]["body"])
+    assert record.generation == 9
+    assert tuple(item.path for item in record.dependencies) == (str(dependency.resolve()),)
