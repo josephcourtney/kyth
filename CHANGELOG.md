@@ -17,6 +17,8 @@ Items should be categorized under these headings:
 
 ## Unreleased
 
+## [1.0.0] - 2026-09-20
+
 ### Added
 
 - add property-based tests for deterministic batches, conservative invalidation, generation monotonicity, protocol serialization, and direct-path safety

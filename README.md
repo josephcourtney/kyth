@@ -2,7 +2,7 @@
 
 Kyth is a local development supervisor for Python web applications and generated websites. It restarts server code safely, keeps the public listening socket stable across restarts, and synchronizes browser views with coherent development generations.
 
-The current baseline is **v0.2.0**.
+The current stable baseline is **v1.0.0**.
 
 The ground-up V1 implementation now covers the complete design surface: supervisor-owned application and control sockets, restartable ASGI lifecycle, filesystem watching, transparent HTML client injection, generation-aware reload, direct output/resource awareness, narrow CSS/image updates, server-render provenance with zero-touch Jinja tracing, generated-site dependency manifests, configurable runtime restart inputs, explicit render/data dependencies, custom readiness, opt-in browser state preservation, semantic data updates, external-HMR coexistence, scoped conservative fallback rules, and structured decision diagnostics.
 

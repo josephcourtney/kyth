@@ -1,14 +1,14 @@
 # =================================== project ====================================
 [project]
   name = "kyth"
-  version = "0.2.0"
+  version = "1.0.0"
   description = "Local development supervisor for Python web applications and generated websites"
   readme = "README.md"
   authors = [
     { name = "Joseph M Courtney", email = "5942706+josephcourtney@users.noreply.github.com" },
   ]
   urls = { "Homepage" = "https://github.com/josephcourtney/kyth", "Bug Tracker" = "https://github.com/josephcourtney/kyth/issues" }
-  license = "GPL-3.0-only"
+  license = "LGPL-3.0-only"
   license-files = ["LICENSE.md"]
   classifiers = []
   requires-python = ">=3.12,<3.15"
