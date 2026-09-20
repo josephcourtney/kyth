@@ -1,8 +1,6 @@
 .ropefolder
 .ropeproject
 __pycache__
-
-
 eggs/
 .eggs/
 lib/
