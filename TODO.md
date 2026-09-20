@@ -1,5 +1,7 @@
 # TODO
 
+- implement Phase 10 from `PLAN.md`: explicit synchronization for streaming/otherwise non-injectable HTML using the existing browser client/control protocol, with request-local bootstrap metadata, CSP cooperation, provenance parity, and no body buffering;
+- implement Phase 11 from `PLAN.md` only after Phase 10: first refactor browser invalidation to represent uncertainty per changed path without changing fallback behavior, then add explicit source-glob → URL-glob conservative fallback scopes;
 - inspect `just cov --lines` for uncovered branches that represent plausible development failures and add focused regressions only where useful;
 - keep `just check`, `just complexity --strict`, and the 78-case Chromium/Firefox acceptance matrix green;
 - periodically rehearse the lifecycle/socket/watcher subset on macOS and Linux across supported Python versions when lifecycle code changes;
