@@ -322,3 +322,32 @@ def test_mixed_browser_actions_account_for_every_view_and_reload_dominates(
     assert set(actions).isdisjoint(decision.current_view_ids)
     assert all(actions[view_id] is BrowserActionKind.RELOAD for view_id in reload_views)
     assert all(actions[view_id] is BrowserActionKind.CSS_UPDATE for view_id in css_views - reload_views)
+
+
+@given(_VIEW_MEMBERSHIP)
+def test_scoped_unknown_dependency_partitions_reload_and_current_views(
+    membership: dict[str, bool],
+) -> None:
+    active = set(membership)
+    scoped = {view_id for view_id, included in membership.items() if included}
+    unknown = Path("content/unknown.json")
+
+    decision = decide_browser_updates(
+        (unknown,),
+        known_outputs=(),
+        output_views={},
+        known_render_sources=(),
+        render_source_views={},
+        complete_render_view_ids=(),
+        deferred_source_views={},
+        known_resources=(),
+        resource_views={},
+        complete_resource_view_ids=(),
+        active_view_ids=active,
+        fallback_scope_views={unknown: scoped},
+    )
+
+    assert {action.view_id for action in decision.actions} == scoped
+    assert all(action.kind is BrowserActionKind.RELOAD for action in decision.actions)
+    assert set(decision.current_view_ids) == active - scoped
+    assert set(decision.current_view_ids).isdisjoint({action.view_id for action in decision.actions})
