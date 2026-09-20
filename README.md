@@ -6,6 +6,22 @@ The current baseline is **v0.2.0**.
 
 The ground-up V1 implementation now covers the complete design surface: supervisor-owned application and control sockets, restartable ASGI lifecycle, filesystem watching, transparent HTML client injection, generation-aware reload, direct output/resource awareness, narrow CSS/image updates, server-render provenance with zero-touch Jinja tracing, generated-site dependency manifests, configurable runtime restart inputs, explicit render/data dependencies, custom readiness, opt-in browser state preservation, semantic data updates, external-HMR coexistence, scoped conservative fallback rules, and structured decision diagnostics.
 
+## Installation
+
+Install Kyth as a command-line tool with uv:
+
+```console
+uv tool install kyth
+```
+
+or into a Python environment with pip:
+
+```console
+python -m pip install kyth
+```
+
+Kyth supports Python 3.12 through 3.14 on macOS and Linux.
+
 Basic usage:
 
 ```console
