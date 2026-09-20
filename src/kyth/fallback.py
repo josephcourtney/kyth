@@ -73,11 +73,7 @@ class FallbackScopeIndex:
             if not rules:
                 continue
             selected = tuple(
-                sorted(
-                    view_id
-                    for view_id, url in view_urls.items()
-                    if _view_matches_any_rule(url, rules)
-                )
+                sorted(view_id for view_id, url in view_urls.items() if _view_matches_any_rule(url, rules))
             )
             resolutions.append(
                 FallbackScopeResolution(
