@@ -55,7 +55,7 @@ Kyth uses several deliberately different fixture applications rather than one un
 | `tests/browser/apps/jinja_app.py` | real optional Jinja rendering with inheritance and includes, validating runtime render provenance and selective/shared-template invalidation |
 | Manifest-backed generated fixture | explicit source→output dependency, stale-output deferral, and browser reload only after the generated output is rebuilt |
 
-The collection is intended to cover distinct semantic boundaries, not permutations that do not change Kyth behavior. Security validation of malformed control requests remains in control-plane tests; manifest schema/path validation remains in provenance tests; external frontend HMR ownership is outside v0.2.0's implemented surface.
+The collection is intended to cover distinct semantic boundaries, not permutations that do not change Kyth behavior. Security validation of malformed control requests remains in control-plane tests; manifest schema/path validation remains in provenance tests; external frontend HMR ownership is covered by classification/policy tests rather than browser-HMR implementation tests.
 
 ## Real-browser acceptance
 
@@ -134,6 +134,10 @@ just mutation
 Mutation execution uses plain pytest assertions and disables bytecode writes so the property-test layer retains its small-test filesystem isolation. The initial slice generated 103 mutants: 85 were killed and 18 were skipped, with no surviving, timeout, or suspicious mutants reported.
 
 Mutation testing is diagnostic rather than a release score gate. Expand the slice to another pure policy/provenance module only when survivors are likely to reveal a meaningful assertion gap; do not mutate subprocess or browser mechanisms merely to increase a headline score.
+
+## Release artifact smoke
+
+`just release-check` runs the canonical repository gate, builds distributions without local `[tool.uv.sources]` overrides, installs the version-matching wheel into a fresh environment, runs `kyth --help`, and imports the documented public Python integration functions from the installed artifact. This catches packaging/export failures that source-checkout tests cannot detect.
 
 ## Platform matrix
 
