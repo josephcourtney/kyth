@@ -536,6 +536,7 @@ async def test_explicit_client_and_render_provenance_share_render_identity(tmp_p
         await middleware({"type": "http", "method": "GET", "headers": []}, _receive, capture)
 
     reporter.assert_awaited_once()
+    assert reporter.await_args is not None
     record = reporter.await_args.args[2]
     assert f'data-kyth-render-id="{record.render_id}"'.encode() in bytes(sent[2]["body"])
     assert record.generation == 9
