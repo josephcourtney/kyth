@@ -967,6 +967,87 @@ def test_generated_source_waits_for_rebuild_before_browser_reload(
     assert output.resolve() not in harness.supervisor._generated.stale_outputs
 
 
+def test_explicit_streaming_html_registers_and_reloads_after_restart(
+    passthrough_harness: _Harness,
+) -> None:
+    harness = passthrough_harness
+    harness.page.goto(f"{harness.origin}/streaming-explicit/", wait_until="load")
+    _wait_for_registered_path(harness.supervisor, "/streaming-explicit/")
+    assert harness.page.evaluate(
+        "() => document.querySelectorAll('script[data-kyth-control]').length"
+    ) == 1
+
+    _set_sentinel(harness.page, "discard")
+    generation = harness.supervisor.state.generation + 1
+    assert harness.supervisor.restart_child()
+
+    harness.page.wait_for_function(
+        "() => window.__kythSentinel === undefined",
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+    _wait_for_generation(harness.supervisor, generation)
+
+
+def test_explicit_streaming_html_connects_under_csp(
+    passthrough_harness: _Harness,
+) -> None:
+    harness = passthrough_harness
+    harness.page.goto(f"{harness.origin}/streaming-csp/", wait_until="load")
+
+    _wait_for_registered_path(harness.supervisor, "/streaming-csp/")
+    assert harness.page.evaluate(
+        "() => document.querySelectorAll('script[data-kyth-control]').length"
+    ) == 1
+
+
+def test_explicit_compressed_html_registers(
+    passthrough_harness: _Harness,
+) -> None:
+    harness = passthrough_harness
+    harness.page.goto(f"{harness.origin}/compressed-explicit/", wait_until="load")
+
+    _wait_for_registered_path(harness.supervisor, "/compressed-explicit/")
+    assert harness.page.evaluate(
+        "() => document.querySelectorAll('script[data-kyth-control]').length"
+    ) == 1
+
+
+def test_explicit_streaming_jinja_provenance_remains_selective(
+    jinja_harness: _Harness,
+) -> None:
+    harness = jinja_harness
+    harness.page.goto(f"{harness.origin}/streaming-a/", wait_until="load")
+    _wait_for_registered_path(harness.supervisor, "/streaming-a/")
+    _wait_for_render_records(harness.supervisor, 1)
+
+    other = harness.context.new_page()
+    other.goto(f"{harness.origin}/b/", wait_until="load")
+    _wait_for_complete_views(harness.supervisor, 2)
+    _wait_for_render_records(harness.supervisor, 2)
+    _set_sentinel(harness.page, "streaming-a")
+    _set_sentinel(other, "discard")
+
+    page_b = harness.asset("templates/page-b.html")
+    page_b.write_text(
+        """{% extends "base.html" %}
+{% block content %}
+<h1 id="status">B-two</h1>
+{% endblock %}
+""",
+        encoding="utf-8",
+    )
+    harness.supervisor._reload_for_browser_change((page_b,))
+
+    other.wait_for_function(
+        """() =>
+            document.querySelector('#status').textContent === 'B-two' &&
+            window.__kythSentinel === undefined
+        """,
+        timeout=BROWSER_TIMEOUT_MS,
+    )
+    assert _sentinel(harness.page) == "streaming-a"
+
+
 def test_normal_buffered_html_is_injected(passthrough_harness: _Harness) -> None:
     harness = passthrough_harness
     harness.page.goto(f"{harness.origin}/normal/", wait_until="load")
