@@ -149,8 +149,7 @@ def _glob_matches(pattern: str, candidate: str) -> bool:
         part = pattern_parts[pattern_index]
         if part == "**":
             return match(pattern_index + 1, candidate_index) or (
-                candidate_index < len(candidate_parts)
-                and match(pattern_index, candidate_index + 1)
+                candidate_index < len(candidate_parts) and match(pattern_index, candidate_index + 1)
             )
 
         if candidate_index == len(candidate_parts):
