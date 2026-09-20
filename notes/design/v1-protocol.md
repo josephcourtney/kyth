@@ -274,7 +274,13 @@ A `reload` event reloads only when its generation is newer than the document gen
 
 When browser-facing files change without a Python restart, the supervisor first updates the live child generation over process IPC and waits for acknowledgement. Only then does it commit the new generation and publish reload. If that update cannot be confirmed, Kyth falls back to replacing the child before notifying browsers.
 
-Streaming or otherwise non-injectable pages retain normal application behavior but do not receive zero-touch browser synchronization in V1. Explicit client inclusion may be offered later for such cases.
+Streaming or otherwise non-injectable HTML may opt into the same synchronization protocol explicitly with `kyth.injection.client_script()`. The middleware creates request-local bootstrap metadata before calling the application, including the control URL/token, generation, render ID, and CSP nonce. The helper returns the corresponding external `<script>` element once for the active request and marks the response as explicitly integrated; outside a managed request it returns an empty string.
+
+Explicit inclusion must occur before Kyth has committed response headers. Once the application declares explicit inclusion, the eventual response must be an HTML document rather than HEAD, range, no-content, or non-HTML output. Misuse fails conspicuously in development.
+
+For a valid explicitly integrated document, Kyth does not rewrite body bytes or streaming boundaries. It applies the same development `no-store` policy and augments existing CSP with the request's bootstrap nonce/control origin before forwarding the response start. Because body rewriting is unnecessary, streaming and explicitly encoded HTML are supported. The application is responsible for placing the returned script markup into the document before any application-level compression.
+
+Automatic and explicit inclusion are mutually exclusive for one response. Both use the same render ID, browser client, per-tab identity, registration sequence, resource snapshots, SSE connection, reconnect synchronization, narrow-update handling, data updates, state preservation, and reload fallback. Captured render provenance is reported for either integration path, so explicit streaming pages retain normal selective invalidation.
 
 ## 17. Static and generated HTML
 
