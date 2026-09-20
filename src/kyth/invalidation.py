@@ -98,6 +98,19 @@ class BrowserUpdateDecision:
     fallbacks: tuple[BrowserFallback, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class _KnownBrowserState:
+    active: set[str]
+    output_paths: set[Path]
+    render_paths: set[Path]
+    data_paths: set[Path]
+    content_paths: set[Path]
+    resource_paths: set[Path]
+    direct_views: set[str]
+    complete_render_views: set[str]
+    complete_resource_views: set[str]
+
+
 def decide_browser_updates(
     changed_paths: Collection[Path],
     *,
@@ -117,20 +130,20 @@ def decide_browser_updates(
 ) -> BrowserUpdateDecision:
     """Choose one coherent browser action per view for a stable change batch."""
     paths = tuple(sorted(set(changed_paths), key=Path.as_posix))
-    active = set(active_view_ids)
+    state = _known_browser_state(
+        active_view_ids=active_view_ids,
+        known_outputs=known_outputs,
+        output_views=output_views,
+        known_render_sources=known_render_sources,
+        complete_render_view_ids=complete_render_view_ids,
+        known_data_sources=known_data_sources,
+        known_resources=known_resources,
+        complete_resource_view_ids=complete_resource_view_ids,
+    )
     data_views = {} if data_source_views is None else data_source_views
     scope_views = {} if fallback_scope_views is None else fallback_scope_views
     if not paths:
-        return BrowserUpdateDecision((), (), tuple(sorted(active)), "no-browser-change")
-
-    known_output_paths = set(known_outputs)
-    known_render_paths = set(known_render_sources)
-    known_data_paths = set(known_data_sources)
-    known_content_paths = known_output_paths | known_render_paths | known_data_paths
-    known_resource_paths = set(known_resources)
-    direct_views = {view_id for view_ids in output_views.values() for view_id in view_ids} & active
-    complete_render_views = set(complete_render_view_ids) & active
-    complete_resource_views = set(complete_resource_view_ids) & active
+        return BrowserUpdateDecision((), (), tuple(sorted(state.active)), "no-browser-change")
 
     actions: dict[str, BrowserAction] = {}
     fallbacks: list[BrowserFallback] = []
@@ -138,32 +151,32 @@ def decide_browser_updates(
     removed_by_scope: set[str] = set()
 
     for path in paths:
-        if path in known_content_paths:
+        if path in state.content_paths:
             uncertain = _merge_content_path(
                 actions,
                 path,
-                active=active,
-                direct_views=direct_views,
-                complete_render_views=complete_render_views,
-                known_output_paths=known_output_paths,
+                active=state.active,
+                direct_views=state.direct_views,
+                complete_render_views=state.complete_render_views,
+                known_output_paths=state.output_paths,
                 output_views=output_views,
-                known_render_paths=known_render_paths,
+                known_render_paths=state.render_paths,
                 render_source_views=render_source_views,
                 deferred_source_views=deferred_source_views,
-                known_data_paths=known_data_paths,
+                known_data_paths=state.data_paths,
                 data_source_views=data_views,
             )
-        elif path in known_resource_paths:
+        elif path in state.resource_paths:
             uncertain = _merge_resource_path(
                 actions,
                 path,
-                active=active,
-                complete_resource_views=complete_resource_views,
+                active=state.active,
+                complete_resource_views=state.complete_resource_views,
                 resource_views=resource_views,
             )
         else:
             unknown_paths.add(path)
-            uncertain = set(active)
+            uncertain = set(state.active)
 
         fallback = _apply_fallback(path, uncertain, scope_views=scope_views)
         fallbacks.append(fallback)
@@ -172,7 +185,7 @@ def decide_browser_updates(
             _merge_action(actions, BrowserAction(view_id, BrowserActionKind.RELOAD))
 
     ordered_actions = tuple(sorted(actions.values(), key=lambda action: action.view_id))
-    current = tuple(sorted(active - set(actions)))
+    current = tuple(sorted(state.active - set(actions)))
     materially_scoped = any(
         view_id not in actions or actions[view_id].kind is not BrowserActionKind.RELOAD for view_id in removed_by_scope
     )
@@ -180,13 +193,39 @@ def decide_browser_updates(
         ordered_actions,
         paths=paths,
         unknown_paths=unknown_paths,
-        known_render_sources=known_render_paths,
-        known_content_paths=known_content_paths,
-        known_resources=known_resource_paths,
+        known_render_sources=state.render_paths,
+        known_content_paths=state.content_paths,
         materially_scoped=materially_scoped,
     )
     return BrowserUpdateDecision(paths, ordered_actions, current, reason, tuple(fallbacks))
 
+
+def _known_browser_state(
+    *,
+    active_view_ids: Collection[str],
+    known_outputs: Collection[Path],
+    output_views: Mapping[Path, Collection[str]],
+    known_render_sources: Collection[Path],
+    complete_render_view_ids: Collection[str],
+    known_data_sources: Collection[Path],
+    known_resources: Collection[Path],
+    complete_resource_view_ids: Collection[str],
+) -> _KnownBrowserState:
+    active = set(active_view_ids)
+    output_paths = set(known_outputs)
+    render_paths = set(known_render_sources)
+    data_paths = set(known_data_sources)
+    return _KnownBrowserState(
+        active=active,
+        output_paths=output_paths,
+        render_paths=render_paths,
+        data_paths=data_paths,
+        content_paths=output_paths | render_paths | data_paths,
+        resource_paths=set(known_resources),
+        direct_views={view_id for view_ids in output_views.values() for view_id in view_ids} & active,
+        complete_render_views=set(complete_render_view_ids) & active,
+        complete_resource_views=set(complete_resource_view_ids) & active,
+    )
 
 def _merge_content_path(
     actions: dict[str, BrowserAction],
@@ -337,7 +376,6 @@ def _decision_reason(
     unknown_paths: set[Path],
     known_render_sources: set[Path],
     known_content_paths: set[Path],
-    known_resources: set[Path],
     materially_scoped: bool,
 ) -> str:
     if materially_scoped:
@@ -350,6 +388,4 @@ def _decision_reason(
         return "render-provenance"
     if paths and all(path in known_content_paths for path in paths):
         return "known-direct-output"
-    if all(path in known_resources for path in paths):
-        return "known-browser-dependency"
     return "known-browser-dependency"
