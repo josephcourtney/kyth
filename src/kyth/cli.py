@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
+from itertools import starmap
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -100,7 +101,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
         manifest_paths=tuple(args.manifest_paths),
         restart_patterns=tuple(args.restart_patterns),
         external_hmr_patterns=tuple(args.external_hmr_patterns),
-        fallback_scopes=tuple(FallbackScopeRule(*values) for values in args.fallback_scopes),
+        fallback_scopes=tuple(starmap(FallbackScopeRule, args.fallback_scopes)),
     )
 
     with Supervisor(config) as supervisor, contextlib.suppress(KeyboardInterrupt):
