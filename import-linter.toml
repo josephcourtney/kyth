@@ -50,13 +50,16 @@
 #     control
 #       owns browser registration and the long-lived browser control plane.
 #
-# - changes, invalidation, and provenance are independent domain services:
+# - changes, invalidation, fallback, and provenance are independent domain services:
 #
 #     changes
 #       classifies filesystem changes and determines their semantic effects.
 #
 #     invalidation
 #       represents and computes stale outputs / affected views.
+#
+#     fallback
+#       resolves explicit source-glob -> URL-glob conservative scope assertions.
 #
 #     provenance
 #       records source -> rendered-output dependencies and obtains those
@@ -90,7 +93,7 @@
 #
 #    and:
 #
-#       changes <-> invalidation <-> provenance
+#       changes <-> invalidation <-> fallback <-> provenance
 #
 #    Coordination belongs in supervisor.
 #
@@ -163,7 +166,7 @@
       "cli",
       "supervisor",
       "watcher : process : control",
-      "changes : invalidation : provenance",
+      "changes : invalidation : fallback : provenance",
       "protocol",
       "model",
     ]
@@ -225,6 +228,7 @@
     modules = [
       "kyth.changes",
       "kyth.invalidation",
+      "kyth.fallback",
       "kyth.provenance",
     ]
 
@@ -295,6 +299,7 @@
       "kyth.control",
       "kyth.changes",
       "kyth.invalidation",
+      "kyth.fallback",
       "kyth.provenance",
     ]
 
@@ -321,6 +326,7 @@
     forbidden_modules = [
       "kyth.changes",
       "kyth.invalidation",
+      "kyth.fallback",
       "kyth.provenance",
       "kyth.injection",
     ]
@@ -348,6 +354,7 @@
     forbidden_modules = [
       "kyth.changes",
       "kyth.invalidation",
+      "kyth.fallback",
       "kyth.provenance",
     ]
 
@@ -374,6 +381,7 @@
     forbidden_modules = [
       "kyth.changes",
       "kyth.invalidation",
+      "kyth.fallback",
       "kyth.provenance",
       "kyth.injection",
     ]
@@ -407,6 +415,7 @@
       "kyth.control",
       "kyth.changes",
       "kyth.invalidation",
+      "kyth.fallback",
       "kyth.provenance",
       "kyth.injection",
     ]
@@ -438,6 +447,7 @@
       "kyth.control",
       "kyth.changes",
       "kyth.invalidation",
+      "kyth.fallback",
       "kyth.provenance",
       "kyth.injection",
       "kyth.protocol",
