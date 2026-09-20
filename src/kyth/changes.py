@@ -116,19 +116,22 @@ def classify_path(
     fallback_scoped: bool = False,
 ) -> ChangeEffect:
     active_policy = policy or ChangePolicy()
-    if path.suffix.lower() in PYTHON_SUFFIXES:
-        return ChangeEffect.SERVER_RESTART
-    if path.name in RESTART_FILENAMES or _is_environment_file(path.name):
-        return ChangeEffect.SERVER_RESTART
-    if any(path.match(pattern) for pattern in active_policy.restart_patterns):
+    if _requires_restart(path, active_policy):
         return ChangeEffect.SERVER_RESTART
     if any(path.match(pattern) for pattern in active_policy.external_hmr_patterns):
         return ChangeEffect.EXTERNAL_HMR
-    if fallback_scoped:
-        return ChangeEffect.BROWSER_CHANGE
-    if path.suffix.lower() in BROWSER_SUFFIXES:
+    if fallback_scoped or path.suffix.lower() in BROWSER_SUFFIXES:
         return ChangeEffect.BROWSER_CHANGE
     return ChangeEffect.OTHER
+
+
+def _requires_restart(path: Path, policy: ChangePolicy) -> bool:
+    return (
+        path.suffix.lower() in PYTHON_SUFFIXES
+        or path.name in RESTART_FILENAMES
+        or _is_environment_file(path.name)
+        or any(path.match(pattern) for pattern in policy.restart_patterns)
+    )
 
 
 def _is_environment_file(name: str) -> bool:
