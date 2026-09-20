@@ -174,8 +174,7 @@ def decide_browser_updates(
     ordered_actions = tuple(sorted(actions.values(), key=lambda action: action.view_id))
     current = tuple(sorted(active - set(actions)))
     materially_scoped = any(
-        view_id not in actions or actions[view_id].kind is not BrowserActionKind.RELOAD
-        for view_id in removed_by_scope
+        view_id not in actions or actions[view_id].kind is not BrowserActionKind.RELOAD for view_id in removed_by_scope
     )
     reason = _decision_reason(
         ordered_actions,
