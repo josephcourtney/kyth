@@ -152,7 +152,15 @@ An output/render may be:
 
 When a source changes, Kyth invalidates reachable derived outputs. It then intersects those outputs with active views.
 
-Unknown edges are represented as uncertainty, not silently omitted. The conservative fallback for uncertainty is configured at a scope such as application, template root, or route group.
+Unknown edges are represented as uncertainty, not silently omitted. Without an explicit scope rule, each ambiguous changed path conservatively treats every otherwise-unaccounted-for active view as potentially affected.
+
+Repeated `--fallback-scope SOURCE_GLOB URL_GLOB` rules may narrow that uncertain set. Source globs are matched against every valid path representation relative to configured development roots; nested roots therefore union matching rules. URL globs are matched against decoded, normalized active-view URL paths with query and fragment ignored. Multiple source-matching rules union their URL scopes.
+
+A fallback rule is a trusted completeness assertion: it states that an otherwise-unknown matching source cannot affect views outside the declared URL scope. It is not inferred from source/URL naming. A matching source rule whose URL scope contains no active view is therefore a valid no-reload result for uncertainty. If an active view URL cannot be normalized, Kyth retains it conservatively inside a matched source scope.
+
+Precise relationships always dominate the fallback scope. A view known affected through direct output mapping, browser resource tracking, render provenance, semantic data provenance, or generated-output metadata receives its normal action even when it lies outside the configured fallback URL pattern. Conversely, a source path with no matching fallback rule retains the application-wide conservative fallback for uncertain views.
+
+Scope-matched sources are browser-relevant even when their suffix would otherwise classify as `OTHER`. Classification precedence is server restart, external HMR ownership, configured fallback scope, generic browser-facing suffix, then other. Phase 11 does not narrow server-restart browser synchronization.
 
 ## 10. Source versions and invalidation
 
