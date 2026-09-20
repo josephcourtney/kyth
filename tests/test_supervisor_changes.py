@@ -86,6 +86,7 @@ def test_manifest_source_change_is_deferred_until_generated_output_changes(tmp_p
     supervisor = Supervisor(
         SupervisorConfig(
             "example:app",
+            port=0,
             watch_roots=(tmp_path,),
             manifest_paths=(manifest_path,),
         )
