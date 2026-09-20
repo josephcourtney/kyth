@@ -168,9 +168,7 @@ def scope_harness(
                 startup_timeout=5.0,
                 shutdown_timeout=1.0,
                 watch_roots=(tmp_path,),
-                fallback_scopes=(
-                    FallbackScopeRule("content/docs/**", "/docs/**"),
-                ),
+                fallback_scopes=(FallbackScopeRule("content/docs/**", "/docs/**"),),
             )
         ) as supervisor,
     ):
