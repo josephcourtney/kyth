@@ -27,6 +27,12 @@ def test_parser_accepts_target_host_port_watch_paths_and_control_port() -> None:
         "config/*.yaml",
         "--external-hmr-on",
         "frontend/*.js",
+        "--fallback-scope",
+        "templates/admin/**",
+        "/admin/**",
+        "--fallback-scope",
+        "content/docs/**",
+        "/docs/**",
         "--control-port",
         "8765",
     ])
@@ -40,4 +46,8 @@ def test_parser_accepts_target_host_port_watch_paths_and_control_port() -> None:
     assert args.manifest_paths == [Path("build/kyth-manifest.json")]
     assert args.restart_patterns == ["config/*.yaml"]
     assert args.external_hmr_patterns == ["frontend/*.js"]
+    assert args.fallback_scopes == [
+        ["templates/admin/**", "/admin/**"],
+        ["content/docs/**", "/docs/**"],
+    ]
     assert args.control_port == 8765
