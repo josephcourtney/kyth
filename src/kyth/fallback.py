@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
+import os
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,7 +41,7 @@ class FallbackScopeIndex:
         roots: Collection[Path],
         rules: Collection[FallbackScopeRule],
     ) -> None:
-        self._roots = tuple(path.expanduser().resolve(strict=False) for path in roots)
+        self._roots = tuple(_normalize_path(path) for path in roots)
         self._rules = tuple(rules)
 
     @property
@@ -80,7 +81,7 @@ class FallbackScopeIndex:
             )
             resolutions.append(
                 FallbackScopeResolution(
-                    path.expanduser().resolve(strict=False),
+                    _normalize_path(path),
                     rules,
                     selected,
                 )
@@ -95,8 +96,12 @@ def scope_view_mapping(
     return {resolution.path: resolution.view_ids for resolution in resolutions}
 
 
+def _normalize_path(path: Path) -> Path:
+    return Path(os.path.abspath(path.expanduser()))
+
+
 def _relative_paths(path: Path, roots: tuple[Path, ...]) -> tuple[str, ...]:
-    resolved = path.expanduser().resolve(strict=False)
+    resolved = _normalize_path(path)
     relative: set[str] = set()
     for root in roots:
         try:
