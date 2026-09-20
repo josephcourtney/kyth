@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import sys
 
-sys.dont_write_bytecode = True
-
 from hypothesis import settings
 from hypothesis.database import InMemoryExampleDatabase
+
+sys.dont_write_bytecode = True
 
 _HYPOTHESIS_PROFILE = "kyth-hermetic"
 
