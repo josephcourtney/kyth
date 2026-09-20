@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
     from pathlib import Path
 
     from kyth.model import FileBatch
@@ -90,15 +91,30 @@ class ChangeSet:
         return tuple(item.path for item in self.paths if item.effect is ChangeEffect.OTHER)
 
 
-def classify_batch(batch: FileBatch, *, policy: ChangePolicy | None = None) -> ChangeSet:
+def classify_batch(
+    batch: FileBatch,
+    *,
+    policy: ChangePolicy | None = None,
+    fallback_scope_paths: Collection[Path] = (),
+) -> ChangeSet:
     active_policy = policy or ChangePolicy()
+    scoped = set(fallback_scope_paths)
     classified = tuple(
-        ClassifiedPath(path=path, effect=classify_path(path, policy=active_policy)) for path in batch.paths
+        ClassifiedPath(
+            path=path,
+            effect=classify_path(path, policy=active_policy, fallback_scoped=path in scoped),
+        )
+        for path in batch.paths
     )
     return ChangeSet(batch=batch, paths=classified)
 
 
-def classify_path(path: Path, *, policy: ChangePolicy | None = None) -> ChangeEffect:
+def classify_path(
+    path: Path,
+    *,
+    policy: ChangePolicy | None = None,
+    fallback_scoped: bool = False,
+) -> ChangeEffect:
     active_policy = policy or ChangePolicy()
     if path.suffix.lower() in PYTHON_SUFFIXES:
         return ChangeEffect.SERVER_RESTART
@@ -108,6 +124,8 @@ def classify_path(path: Path, *, policy: ChangePolicy | None = None) -> ChangeEf
         return ChangeEffect.SERVER_RESTART
     if any(path.match(pattern) for pattern in active_policy.external_hmr_patterns):
         return ChangeEffect.EXTERNAL_HMR
+    if fallback_scoped:
+        return ChangeEffect.BROWSER_CHANGE
     if path.suffix.lower() in BROWSER_SUFFIXES:
         return ChangeEffect.BROWSER_CHANGE
     return ChangeEffect.OTHER
