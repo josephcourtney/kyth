@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
-import os
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -20,6 +20,7 @@ class FallbackScopeRule:
     url_pattern: str
 
     def __post_init__(self) -> None:
+        """Validate source and URL glob syntax eagerly."""
         _validate_source_pattern(self.source_pattern)
         _validate_url_pattern(self.url_pattern)
 
@@ -93,7 +94,8 @@ def scope_view_mapping(
 
 
 def _normalize_path(path: Path) -> Path:
-    return Path(os.path.abspath(path.expanduser()))
+    # Scope matching is lexical; resolving through the filesystem would make pure policy depend on I/O.
+    return Path(os.path.abspath(path.expanduser()))  # ruff: ignore[os-path-abspath]
 
 
 def _relative_paths(path: Path, roots: tuple[Path, ...]) -> tuple[str, ...]:
