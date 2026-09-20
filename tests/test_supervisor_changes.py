@@ -146,6 +146,7 @@ def test_restart_defers_view_until_stale_generated_output_is_ready(tmp_path: Pat
     supervisor = Supervisor(
         SupervisorConfig(
             "example:app",
+            port=0,
             watch_roots=(tmp_path,),
             manifest_paths=(manifest_path,),
         )
@@ -153,8 +154,10 @@ def test_restart_defers_view_until_stale_generated_output_is_ready(tmp_path: Pat
     with supervisor:
         supervisor._generated.load_all()
         control = supervisor._require_control()
-        control.views.register(view_id="generated", url="http://127.0.0.1:8000/", generation=0)
-        control.views.register(view_id="dynamic", url="http://127.0.0.1:8000/dynamic", generation=0)
+        host, port = supervisor.address
+        origin = f"http://{host}:{port}"
+        control.views.register(view_id="generated", url=f"{origin}/", generation=0)
+        control.views.register(view_id="dynamic", url=f"{origin}/dynamic", generation=0)
         supervisor._generated.mark_sources_changed((source_path,))
 
         def start_ready(*, reload_browsers: bool, commit_control: bool = True) -> bool:
