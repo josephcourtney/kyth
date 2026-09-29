@@ -1,8 +1,10 @@
+import logging
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
 
-from kyth.cli import _parser
+from kyth.cli import _configure_logging, _parser
 
 
 @pytest.mark.unit
@@ -51,3 +53,26 @@ def test_parser_accepts_target_host_port_watch_paths_and_control_port() -> None:
         ["content/docs/**", "/docs/**"],
     ]
     assert args.control_port == 8765
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.parametrize(("verbose", "kyth_level"), [(False, logging.INFO), (True, logging.DEBUG)])
+def test_configure_logging_keeps_root_at_info_and_scopes_debug_to_kyth(
+    *,
+    verbose: bool,
+    kyth_level: int,
+) -> None:
+    kyth_logger = Mock()
+    with (
+        patch("kyth.cli.logging.basicConfig") as basic_config,
+        patch("kyth.cli.logging.getLogger", return_value=kyth_logger) as get_logger,
+    ):
+        _configure_logging(verbose=verbose)
+
+    basic_config.assert_called_once_with(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+    get_logger.assert_called_once_with("kyth")
+    kyth_logger.setLevel.assert_called_once_with(kyth_level)
