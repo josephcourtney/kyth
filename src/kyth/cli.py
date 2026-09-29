@@ -82,12 +82,17 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def cli(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+def _configure_logging(*, verbose: bool) -> None:
     logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
+        level=logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
+    logging.getLogger("kyth").setLevel(logging.DEBUG if verbose else logging.INFO)
+
+
+def cli(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    _configure_logging(verbose=args.verbose)
     watch_roots = tuple(args.watch_roots) if args.watch_roots else (Path.cwd(),)
     config = SupervisorConfig(
         app_target=args.app,
