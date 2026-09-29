@@ -4,12 +4,15 @@ import os
 import signal
 import sys
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from kyth.model import ChildStatus
 from kyth.supervisor import Supervisor, SupervisorConfig
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX SIGINT process semantics")
 
