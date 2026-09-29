@@ -109,7 +109,7 @@ def record_data_dependency(identity: str, path: str | Path) -> bool:
 
 
 def install_jinja_tracing() -> bool:
-    """Install zero-touch Jinja tracing when Jinja is available in the child."""
+    """Install zero-touch Jinja tracing when a supported Jinja shape is available."""
     try:
         module = importlib.import_module("jinja2.environment")
     except ModuleNotFoundError as exc:
@@ -121,14 +121,27 @@ def install_jinja_tracing() -> bool:
     template_class = vars(module).get("Template")
     if not isinstance(environment_class, type) or not isinstance(template_class, type):
         return False
+    if not _supports_tracing_shape(environment_class, template_class):
+        return False
 
     with _INSTALL_LOCK:
         if bool(vars(environment_class).get("_kyth_tracing_installed", False)):
             return True
-        _patch_environment(environment_class)
-        _patch_template(template_class)
-        _set_attribute(environment_class, "_kyth_tracing_installed", value=True)
+        try:
+            _patch_environment(environment_class)
+            _patch_template(template_class)
+            _set_attribute(environment_class, "_kyth_tracing_installed", value=True)
+        except (AttributeError, KeyError, TypeError):
+            return False
     return True
+
+
+def _supports_tracing_shape(environment_class: type[object], template_class: type[object]) -> bool:
+    required_environment = ("get_template", "select_template")
+    required_template = ("render", "render_async")
+    return all(callable(vars(environment_class).get(name)) for name in required_environment) and all(
+        callable(vars(template_class).get(name)) for name in required_template
+    )
 
 
 def _patch_environment(environment_class: type[object]) -> None:
@@ -193,4 +206,14 @@ def _source_version(path: str | Path) -> tuple[SourceVersion, bool]:
         stat = resolved.stat()
     except OSError:
         return SourceVersion(str(resolved), None, None), False
-    return SourceVersion(str(resolved), stat.st_mtime_ns, stat.st_size), True
+    return (
+        SourceVersion(
+            str(resolved),
+            stat.st_mtime_ns,
+            stat.st_size,
+            stat.st_ctime_ns,
+            stat.st_dev,
+            stat.st_ino,
+        ),
+        True,
+    )
