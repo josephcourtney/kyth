@@ -224,8 +224,8 @@ def test_generated_source_deferral_is_limited_to_dependent_outputs(tmp_path: Pat
     assert deferred[second_source.resolve()] == ("second-view",)
 
 
-@pytest.mark.component
-@pytest.mark.small
+@pytest.mark.integration
+@pytest.mark.medium
 def test_generation_commit_reloads_view_that_appears_after_decision_snapshot() -> None:
     supervisor = Supervisor(SupervisorConfig("example:app", port=0))
     with supervisor:
