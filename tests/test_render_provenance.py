@@ -1,9 +1,22 @@
+import os
 from pathlib import Path
 
 import pytest
 
 from kyth.model import DataDependency, RenderRecord, SourceVersion
 from kyth.provenance import RenderProvenanceIndex
+
+
+def _source_version(path: Path) -> SourceVersion:
+    stat = path.stat()
+    return SourceVersion(
+        str(path.resolve()),
+        stat.st_mtime_ns,
+        stat.st_size,
+        stat.st_ctime_ns,
+        stat.st_dev,
+        stat.st_ino,
+    )
 
 
 @pytest.mark.integration
@@ -45,8 +58,7 @@ def test_render_provenance_indexes_dependencies_and_completeness() -> None:
 def test_render_provenance_skips_view_already_rendered_from_current_source_version(tmp_path: Path) -> None:
     source = tmp_path / "page.html"
     source.write_text("first", encoding="utf-8")
-    stat = source.stat()
-    version = SourceVersion(str(source.resolve()), stat.st_mtime_ns, stat.st_size)
+    version = _source_version(source)
     record = RenderRecord("render", 1, (version,), True, "jinja")
 
     index = RenderProvenanceIndex()
@@ -63,11 +75,35 @@ def test_render_provenance_skips_view_already_rendered_from_current_source_versi
 
 @pytest.mark.integration
 @pytest.mark.medium
+def test_render_provenance_detects_same_size_atomic_replacement_with_preserved_mtime(tmp_path: Path) -> None:
+    source = tmp_path / "page.html"
+    source.write_text("first", encoding="utf-8")
+    version = _source_version(source)
+    record = RenderRecord("render", 1, (version,), True, "jinja")
+
+    index = RenderProvenanceIndex()
+    index.reconcile((record,), {"view": "render"})
+
+    replacement = tmp_path / "replacement.html"
+    replacement.write_text("other", encoding="utf-8")
+    os.utime(replacement, ns=(version.mtime_ns or 0, version.mtime_ns or 0))
+    os.replace(replacement, source)
+
+    current = source.stat()
+    assert current.st_size == version.size
+    assert current.st_mtime_ns == version.mtime_ns
+    assert current.st_ino != version.inode
+    assert index.stale_source_views((source,)) == {
+        source.resolve(): ("view",),
+    }
+
+
+@pytest.mark.integration
+@pytest.mark.medium
 def test_render_provenance_indexes_semantic_data_dependencies(tmp_path: Path) -> None:
     data = tmp_path / "inventory.json"
     data.write_text('{"count": 1}', encoding="utf-8")
-    stat = data.stat()
-    source = SourceVersion(str(data.resolve()), stat.st_mtime_ns, stat.st_size)
+    source = _source_version(data)
     record = RenderRecord(
         "render-data",
         1,
