@@ -3,6 +3,7 @@ from __future__ import annotations
 import multiprocessing
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kyth.process.child import run_child
@@ -67,10 +68,12 @@ class ChildProcess:
         readiness_recv, readiness_send = self._context.Pipe(duplex=False)
         control_recv, control_send = self._context.Pipe(duplex=False)
         socket_transfer, socket_family, socket_type, socket_proto = duplicate_listening_socket(listening_socket)
+        import_root = str(Path.cwd().resolve())
         process = self._context.Process(
             target=run_child,
             args=(
                 app_target,
+                import_root,
                 socket_transfer,
                 socket_family,
                 socket_type,
