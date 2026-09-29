@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from kyth.changes import classify_batch
+from kyth.invalidation import BrowserActionKind, BrowserUpdateDecision
 from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch, FileEvent, FileOperation
 from kyth.supervisor import Supervisor, SupervisorConfig
 
@@ -221,6 +222,34 @@ def test_generated_source_deferral_is_limited_to_dependent_outputs(tmp_path: Pat
 
     assert deferred[first_source.resolve()] == ("first-view",)
     assert deferred[second_source.resolve()] == ("second-view",)
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_generation_commit_reloads_view_that_appears_after_decision_snapshot() -> None:
+    supervisor = Supervisor(SupervisorConfig("example:app", port=0))
+    with supervisor:
+        control = supervisor._require_control()
+        control.views.register(view_id="known", url="http://127.0.0.1:8000/known", generation=0)
+        decision = BrowserUpdateDecision(
+            invalidated_paths=(Path("/project/site.css"),),
+            actions=(),
+            current_view_ids=("known",),
+            reason="narrow-browser-update",
+        )
+        control.views.register(view_id="late", url="http://127.0.0.1:8000/late", generation=0)
+
+        with patch.object(control, "publish") as publish:
+            reconciled = supervisor._reconcile_late_views(decision, 1, defer_generated=False)
+
+        assert [(action.view_id, action.kind) for action in reconciled.actions] == [
+            ("late", BrowserActionKind.RELOAD),
+        ]
+        publish.assert_called_once()
+        event = publish.call_args.args[0]
+        assert event.kind.value == "reload"
+        assert event.generation == 1
+        assert publish.call_args.kwargs["view_ids"] == ("late",)
 
 
 @pytest.mark.component
