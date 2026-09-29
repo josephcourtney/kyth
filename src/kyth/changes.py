@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 PYTHON_SUFFIXES = frozenset({".py", ".pyi", ".pyx"})
 BROWSER_SUFFIXES = frozenset({
+    ".avif",
+    ".bmp",
     ".css",
     ".gif",
     ".htm",
