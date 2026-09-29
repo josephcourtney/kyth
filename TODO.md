@@ -1,6 +1,6 @@
 # TODO
 
-- inspect `just cov --lines` for uncovered branches that represent plausible development failures and add focused regressions only where useful;
+- exercise every project under `examples/e2e/` through the documented edit/recovery scenarios and record any unexplained behavior as a concrete issue;
 - keep `just check`, `just complexity --strict`, and the 90-case Chromium/Firefox acceptance matrix green;
 - periodically rehearse the lifecycle/socket/watcher subset on macOS and Linux across supported Python versions when lifecycle code changes;
 - add WebKit acceptance only if Safari/WebKit becomes an intended development target;

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 90">
+  <rect width="220" height="90" rx="14" fill="#eceff4"/>
+  <circle cx="45" cy="45" r="24" fill="#5e81ac"/>
+  <text x="82" y="54" font-family="system-ui, sans-serif" font-size="28" fill="#2e3440">KYTH</text>
+</svg>
