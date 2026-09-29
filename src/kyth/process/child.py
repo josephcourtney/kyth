@@ -72,6 +72,7 @@ def _watch_control(
 
 def run_child(
     app_target: str,
+    import_root: str,
     socket_transfer: SocketTransfer,
     socket_family: int,
     socket_type: int,
@@ -92,6 +93,8 @@ def run_child(
     try:
         with tempfile.TemporaryDirectory(prefix="kyth-pycache-") as pycache_dir:
             sys.pycache_prefix = pycache_dir
+            if not sys.path or sys.path[0] != import_root:
+                sys.path.insert(0, import_root)
             importlib.invalidate_caches()
             application = HTMLInjectionMiddleware(
                 _load_application(app_target),
