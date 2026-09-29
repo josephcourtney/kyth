@@ -30,6 +30,8 @@ kyth package.module:app
 
 Use repeated `--watch PATH` options to override the default current-directory watch root, repeated `--ignore PATH` options to add ignored paths, `--restart-on PATTERN` for additional process-loaded configuration, `--external-hmr-on PATTERN` for browser assets owned by another development server, and `--fallback-scope SOURCE_GLOB URL_GLOB` to narrow conservative reload for otherwise-uncertain source/view relationships. `--verbose` exposes the full change-decision chain. Use `--control-port PORT` only when a fixed loopback control port is required; otherwise Kyth chooses one automatically.
 
+The browser control plane is intentionally loopback-only. Binding the application server itself to a non-loopback host does not make Kyth a remote-device development coordinator: the synchronized browser must run on the same machine as Kyth. This keeps the development control service outside the remotely reachable application surface.
+
 For generated sites, pass one or more dependency manifests:
 
 ```console
@@ -38,9 +40,11 @@ kyth package.module:app --manifest path/to/kyth-manifest.json
 
 A V1 manifest is versioned JSON mapping relative HTML outputs to the relative source files that generate them. Outputs may also declare the browser URL that serves them (for example `public/index.html` → `/`). Its directory becomes a development watch root automatically.
 
-For supported ordinary HTML responses, no application or template changes are required. When Jinja is present, Kyth records the actual filesystem-backed templates used by each rendered response and uses that provenance to avoid disturbing views whose complete render did not depend on a changed template.
+For supported ordinary HTML responses, no application or template changes are required. When a compatible Jinja runtime is present, Kyth records the actual filesystem-backed templates used by each rendered response and uses that provenance to avoid disturbing views whose complete render did not depend on a changed template. Jinja tracing is an optional precision optimization: if the installed Jinja runtime does not expose the supported tracing shape, Kyth leaves Jinja untouched and falls back to the normal conservative dependency behavior.
 
-Streaming or otherwise non-injectable HTML can opt into the same synchronization protocol with `kyth.injection.client_script()`. Call it while constructing the document, before response headers/body are committed, and include the returned `<script>` element verbatim in the HTML. Kyth leaves streaming or encoded body bytes untouched while applying the required development cache/CSP headers and retaining the same generation, render provenance, per-tab registration, reconnect, and reload behavior. Outside a Kyth-managed request the helper returns an empty string. Template engines with auto-escaping must explicitly render the returned development-only markup as HTML rather than escaped text.
+Kyth preserves incoming request headers, including `Accept-Encoding`, rather than changing application-visible content negotiation merely to make a response injectable. As a result, an application or compression middleware may legitimately return content-encoded HTML. Encoded HTML, streaming HTML, and other non-injectable response forms are left untouched; use `kyth.injection.client_script()` when those responses need synchronization, or disable development compression in the application.
+
+Call `client_script()` while constructing the document, before response headers/body are committed, and include the returned `<script>` element verbatim in the HTML. Kyth leaves streaming or encoded body bytes untouched while applying the required development cache/CSP headers and retaining the same generation, render provenance, per-tab registration, reconnect, and reload behavior. Outside a Kyth-managed request the helper returns an empty string. Template engines with auto-escaping must explicitly render the returned development-only markup as HTML rather than escaped text.
 
 Direct stylesheet links and safe `<img src>` resources can update in place; JavaScript, fonts, ambiguous resources, incomplete provenance, and failed narrow updates retain full reload as the correctness fallback. Kyth disables stale development response caching so full reload remains a reliable recovery mechanism.
 
@@ -66,4 +70,5 @@ See:
 - `PLAN.md` for implementation sequencing;
 - `STATUS.md` for current project state;
 - `TODO.md` for immediate work;
+- `ISSUES.md` for the current review-hardening record, when present;
 - `TESTING.md` for test layers, property-based testing, browser acceptance, and quality tooling.
