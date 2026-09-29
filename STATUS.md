@@ -4,24 +4,23 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-Kyth 1.0.0 establishes the stable compatibility boundary for the V1 design. The complete V1 surface, post-v0.2.0 hardening, explicit synchronization for non-injectable HTML, and scoped conservative fallback are implemented. Work is now evidence-driven maintenance rather than planned feature completion.
+Kyth 1.0.0 establishes the stable V1 compatibility boundary. A third-party-style post-1.0 review identified several bounded correctness, compatibility, validation, and documentation issues; those fixes are now in the unreleased hardening work recorded in `ISSUES.md` and `CHANGELOG.md`.
 
 ## Current state
 
-- `just check` and `just complexity --strict` pass; every analyzed source block is below the configured complexity threshold.
-- The 90-case Chromium/Firefox acceptance matrix passes.
-- Lifecycle/socket/watcher behavior has been rehearsed on macOS and Linux across Python 3.12-3.14.
-- Browser registration/reconnect, bounded SSE queues, duplicate-tab identity, watcher atomic-save handling, and generated-output readiness races have dedicated hardening coverage.
-- Direct output/resource provenance, Jinja/render provenance, generated manifests, explicit render/data dependencies, readiness hooks, state preservation, external-HMR ownership, and fallback scopes are implemented.
-- Streaming and explicitly encoded HTML can opt into the normal browser protocol through `kyth.injection.client_script()`.
-- Fallback scopes narrow only otherwise-uncertain views; precise provenance still wins, unmatched ambiguity remains application-wide, and restart/external-HMR classification retains precedence.
-- The current mutation slice covers `changes.py`, `fallback.py`, `invalidation.py`, and `protocol.py`; its 772-mutant run killed 752, skipped 20, and had no surviving, timeout, or suspicious mutants.
-- `just release-check` validates the repository, builds without local source overrides, installs the resulting wheel into a fresh environment, runs `kyth --help`, and imports the documented Python integration surface.
-- Project and package licensing are aligned on GNU LGPL v3.0 only (`LGPL-3.0-only`).
+- `v1.0.0` is an annotated tag on the original 1.0 release commit; post-release fixes remain unreleased and do not rewrite that tag.
+- Browser-facing classification now covers all image suffixes supported by narrow invalidation, including AVIF and BMP.
+- Generation commit now reconciles views that appear after the original invalidation snapshot, closing a missed-event race without weakening generated-output deferral.
+- Render/data source versions include change-time and filesystem identity metadata, matching the watcher hardening needed to detect same-size atomic replacements with preserved mtimes.
+- Optional Jinja tracing validates the installed class shape and fails soft to conservative synchronization when unsupported.
+- Kyth preserves application-visible request content negotiation; encoded or streaming HTML remains untouched and may opt in through `kyth.injection.client_script()`.
+- Persistent GitHub Actions CI runs `just check`, `just complexity --strict`, and the Chromium/Firefox browser acceptance suite; tag release preflight depends on both validation jobs before running `just release-check`.
+- Existing lifecycle/socket/watcher behavior has been rehearsed on macOS and Linux across Python 3.12-3.14; rerun that matrix when those mechanisms change.
+- The mutation slice remains focused on `changes.py`, `fallback.py`, `invalidation.py`, and `protocol.py` rather than expanding mutation testing mechanically.
 
 ## Next priorities
 
-- inspect uncovered branches only when they represent plausible development failures;
 - keep the canonical, browser, complexity, and supported lifecycle gates green;
-- tag and publish 1.0.0 only from the exact commit that passes the final release gates;
-- add WebKit, diagnostic history, or a broader plugin framework only in response to a concrete product need.
+- prepare a 1.0.1 patch release from the reviewed hardening fixes when release-ready;
+- inspect uncovered branches only when they represent plausible development failures;
+- add WebKit, diagnostic history, a standalone JavaScript source/lint path, or a broader plugin framework only in response to concrete product or maintenance needs.
