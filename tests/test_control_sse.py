@@ -52,6 +52,18 @@ def test_event_broker_close_replaces_pending_events_with_disconnect() -> None:
 
 @pytest.mark.unit
 @pytest.mark.small
+def test_event_broker_late_subscriber_is_disconnected_after_close() -> None:
+    broker = EventBroker()
+
+    broker.close()
+    subscriber = broker.subscribe("late")
+    broker.close()
+
+    assert subscriber.get_nowait() is None
+
+
+@pytest.mark.unit
+@pytest.mark.small
 def test_event_broker_rejects_nonpositive_queue_size() -> None:
     with pytest.raises(ValueError, match="subscriber queue size must be positive"):
         EventBroker(subscriber_queue_size=0)
