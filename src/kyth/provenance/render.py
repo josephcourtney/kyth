@@ -145,7 +145,14 @@ def _source_version(path: Path) -> SourceVersion:
         stat = path.stat()
     except OSError:
         return SourceVersion(str(path), None, None)
-    return SourceVersion(str(path), stat.st_mtime_ns, stat.st_size)
+    return SourceVersion(
+        str(path),
+        stat.st_mtime_ns,
+        stat.st_size,
+        stat.st_ctime_ns,
+        stat.st_dev,
+        stat.st_ino,
+    )
 
 
 def _normalize_path(path: str) -> Path:
