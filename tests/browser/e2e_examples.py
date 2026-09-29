@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Sequence
     from types import TracebackType
 
 pytestmark = [
@@ -32,6 +32,7 @@ REPO_ROOT = Path(__file__).parents[2]
 EXAMPLE_ROOT = REPO_ROOT / "examples" / "e2e"
 BROWSER_TIMEOUT_MS = 10_000
 SERVER_TIMEOUT_SECONDS = 10.0
+WATCH_SETTLE_SECONDS = 0.75
 
 
 class _Page(Protocol):
@@ -121,9 +122,9 @@ def _copy_example(tmp_path: Path, name: str) -> Path:
 
 
 def _kyth_executable() -> Path:
-    executable = Path(sys.executable).with_name("kyth")
-    assert executable.is_file(), f"Kyth console script not found next to {sys.executable}"
-    return executable
+    executable = shutil.which("kyth")
+    assert executable is not None, "Kyth console script is not on PATH"
+    return Path(executable)
 
 
 def _start_cli(root: Path, *extra_args: str) -> _CliServer:
@@ -170,32 +171,60 @@ def _start_cli(root: Path, *extra_args: str) -> _CliServer:
 
 
 def _wait_for_http(server: _CliServer) -> None:
-    split = urlsplit(server.origin)
-    assert split.hostname is not None
-    assert split.port is not None
     deadline = time.monotonic() + SERVER_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        connection = http.client.HTTPConnection(split.hostname, split.port, timeout=0.25)
         try:
-            connection.request("GET", "/")
-            response = connection.getresponse()
-            response.read()
-            if response.status < 500:
-                return
+            status, _, _ = _http_get(server, "/")
         except (OSError, http.client.HTTPException):
-            pass
-        finally:
-            connection.close()
+            status = 500
+        if status < 500:
+            return
         if server.process.poll() is not None:
             pytest.fail(f"Kyth exited before serving HTTP:\n{server.log()}")
         time.sleep(0.02)
     pytest.fail(f"Kyth never became reachable:\n{server.log()}")
 
 
+def _http_get(server: _CliServer, path: str) -> tuple[int, dict[str, str], bytes]:
+    split = urlsplit(server.origin)
+    assert split.hostname is not None
+    assert split.port is not None
+    connection = http.client.HTTPConnection(split.hostname, split.port, timeout=1.0)
+    try:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        body = response.read()
+        headers = {name.lower(): value for name, value in response.getheaders()}
+        return response.status, headers, body
+    finally:
+        connection.close()
+
+
 def _replace(path: Path, old: str, new: str) -> None:
+    _replace_many(path, ((old, new),))
+
+
+def _replace_many(path: Path, replacements: Sequence[tuple[str, str]]) -> None:
     text = path.read_text(encoding="utf-8")
-    assert old in text
-    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+    for old, new in replacements:
+        assert old in text
+        text = text.replace(old, new, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+def _append(path: Path, text: str) -> None:
+    path.write_text(path.read_text(encoding="utf-8") + text, encoding="utf-8")
+
+
+def _run_build(root: Path, target: str) -> None:
+    environment = os.environ.copy()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    subprocess.run(
+        [sys.executable, "build.py", target],
+        cwd=root,
+        env=environment,
+        check=True,
+    )
 
 
 def _set_probe(page: _Page, value: str) -> None:
@@ -220,24 +249,19 @@ def _wait_text(page: _Page, text: str) -> None:
     )
 
 
-def _wait_log(server: _CliServer, text: str) -> None:
+def _wait_log(server: _CliServer, text: str, *, occurrences: int = 1) -> None:
     deadline = time.monotonic() + SERVER_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        if text in server.log():
+        if server.log().count(text) >= occurrences:
             return
         if server.process.poll() is not None:
             pytest.fail(f"Kyth exited while waiting for log text {text!r}:\n{server.log()}")
         time.sleep(0.02)
-    pytest.fail(f"Kyth never logged {text!r}:\n{server.log()}")
+    pytest.fail(f"Kyth never logged {text!r} {occurrences} time(s):\n{server.log()}")
 
 
-@pytest.mark.parametrize("example_name", ["plain_asgi"])
-def test_plain_asgi_field_workflow(
-    tmp_path: Path,
-    e2e_browser: _Browser,
-    example_name: str,
-) -> None:
-    root = _copy_example(tmp_path, example_name)
+def test_plain_asgi_field_workflow(tmp_path: Path, e2e_browser: _Browser) -> None:
+    root = _copy_example(tmp_path, "plain_asgi")
     server = _start_cli(root)
     context = e2e_browser.new_context()
     try:
@@ -271,11 +295,7 @@ def test_plain_asgi_field_workflow(
 
         _set_probe(home, "js-home")
         _set_probe(about, "js-about")
-        _replace(
-            root / "static" / "app.js",
-            "JavaScript loaded.",
-            "JavaScript reloaded.",
-        )
+        _replace(root / "static" / "app.js", "JavaScript loaded.", "JavaScript reloaded.")
         _wait_text(home, "JavaScript reloaded.")
         _wait_text(about, "JavaScript reloaded.")
         _wait_probe_lost(home, "js-home")
@@ -283,35 +303,276 @@ def test_plain_asgi_field_workflow(
 
         _set_probe(home, "python-home")
         _set_probe(about, "python-about")
-        _replace(
+        _replace_many(
             root / "app.py",
-            "Direct resources are visible below.",
-            "Python restart reached home.",
-        )
-        _replace(
-            root / "app.py",
-            "This is an independent browser view.",
-            "Python restart reached about.",
+            (
+                ("Direct resources are visible below.", "Python restart reached home."),
+                ("This is an independent browser view.", "Python restart reached about."),
+            ),
         )
         _wait_text(home, "Python restart reached home.")
         _wait_text(about, "Python restart reached about.")
         _wait_probe_lost(home, "python-home")
         _wait_probe_lost(about, "python-about")
 
-        valid_app = (root / "app.py").read_text(encoding="utf-8")
+        app_path = root / "app.py"
+        valid_app = app_path.read_text(encoding="utf-8")
         _set_probe(home, "broken-home")
         _set_probe(about, "broken-about")
-        (root / "app.py").write_text(
-            f"{valid_app}\nthis is not valid python ???\n",
-            encoding="utf-8",
-        )
+        app_path.write_text(f"{valid_app}\nthis is not valid python ???\n", encoding="utf-8")
         _wait_log(server, "application startup failed")
         _assert_probe(home, "broken-home")
         _assert_probe(about, "broken-about")
 
-        (root / "app.py").write_text(valid_app, encoding="utf-8")
+        app_path.write_text(valid_app, encoding="utf-8")
         _wait_probe_lost(home, "broken-home")
         _wait_probe_lost(about, "broken-about")
+        assert server.process.poll() is None
+    finally:
+        context.close()
+        server.stop()
+
+
+def test_jinja_field_workflow(tmp_path: Path, e2e_browser: _Browser) -> None:
+    root = _copy_example(tmp_path, "jinja_site")
+    server = _start_cli(root)
+    context = e2e_browser.new_context()
+    try:
+        home = context.new_page()
+        about = context.new_page()
+        home.goto(server.origin, wait_until="load")
+        about.goto(f"{server.origin}/about", wait_until="load")
+
+        _set_probe(home, "home-include")
+        _set_probe(about, "about-include")
+        _replace(
+            root / "templates" / "_home_panel.html",
+            "This include is used only by the home route.",
+            "The home-only include changed.",
+        )
+        _wait_text(home, "The home-only include changed.")
+        _wait_probe_lost(home, "home-include")
+        _assert_probe(about, "about-include")
+
+        _set_probe(home, "home-about-template")
+        _set_probe(about, "about-template")
+        _replace(
+            root / "templates" / "about.html",
+            "This template is independent of the home-only include.",
+            "The about template changed independently.",
+        )
+        _wait_text(about, "The about template changed independently.")
+        _wait_probe_lost(about, "about-template")
+        _assert_probe(home, "home-about-template")
+
+        _set_probe(home, "base-home")
+        _set_probe(about, "base-about")
+        _replace(root / "templates" / "base.html", "<body>", '<body data-field-test="base">')
+        home.wait_for_function(
+            "document.body.dataset.fieldTest === 'base'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        about.wait_for_function(
+            "document.body.dataset.fieldTest === 'base'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        _wait_probe_lost(home, "base-home")
+        _wait_probe_lost(about, "base-about")
+
+        _set_probe(home, "jinja-css-home")
+        _set_probe(about, "jinja-css-about")
+        _replace(root / "static" / "site.css", "max-width: 46rem;", "max-width: 38rem;")
+        home.wait_for_function(
+            "getComputedStyle(document.body).maxWidth === '608px'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        about.wait_for_function(
+            "getComputedStyle(document.body).maxWidth === '608px'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        _assert_probe(home, "jinja-css-home")
+        _assert_probe(about, "jinja-css-about")
+
+        _set_probe(home, "jinja-python-home")
+        _set_probe(about, "jinja-python-about")
+        _append(root / "app.py", "\nFIELD_TEST_RESTART = 1\n")
+        _wait_probe_lost(home, "jinja-python-home")
+        _wait_probe_lost(about, "jinja-python-about")
+        assert server.process.poll() is None
+    finally:
+        context.close()
+        server.stop()
+
+
+def test_generated_site_field_workflow(tmp_path: Path, e2e_browser: _Browser) -> None:
+    root = _copy_example(tmp_path, "generated_site")
+    server = _start_cli(root, "--manifest", "kyth-manifest.json")
+    context = e2e_browser.new_context()
+    try:
+        home = context.new_page()
+        notes = context.new_page()
+        home.goto(server.origin, wait_until="load")
+        notes.goto(f"{server.origin}/notes/", wait_until="load")
+
+        _set_probe(home, "generated-home")
+        _set_probe(notes, "generated-notes")
+        (root / "content" / "home.txt").write_text("Home content changed.\n", encoding="utf-8")
+        _wait_log(server, "generated output(s) stale; waiting for rebuild")
+        _assert_probe(home, "generated-home")
+        _assert_probe(notes, "generated-notes")
+        _run_build(root, "home")
+        _wait_text(home, "Home content changed.")
+        _wait_probe_lost(home, "generated-home")
+        _assert_probe(notes, "generated-notes")
+
+        _set_probe(home, "notes-source-home")
+        _set_probe(notes, "notes-source-notes")
+        (root / "content" / "notes.txt").write_text("Notes content changed.\n", encoding="utf-8")
+        _wait_log(server, "generated output(s) stale; waiting for rebuild", occurrences=2)
+        _assert_probe(home, "notes-source-home")
+        _assert_probe(notes, "notes-source-notes")
+        _run_build(root, "notes")
+        _wait_text(notes, "Notes content changed.")
+        _wait_probe_lost(notes, "notes-source-notes")
+        _assert_probe(home, "notes-source-home")
+
+        _set_probe(home, "generator-home")
+        _set_probe(notes, "generator-notes")
+        _append(root / "build.py", "\n# shared generator field-test edit\n")
+        _wait_log(server, "generated output(s) stale; waiting for rebuild", occurrences=3)
+        _assert_probe(home, "generator-home")
+        _assert_probe(notes, "generator-notes")
+        _run_build(root, "home")
+        _wait_probe_lost(home, "generator-home")
+        _assert_probe(notes, "generator-notes")
+        _run_build(root, "notes")
+        _wait_probe_lost(notes, "generator-notes")
+
+        _set_probe(home, "generated-css-home")
+        _set_probe(notes, "generated-css-notes")
+        _replace(root / "public" / "site.css", "max-width: 44rem;", "max-width: 36rem;")
+        home.wait_for_function(
+            "getComputedStyle(document.body).maxWidth === '576px'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        notes.wait_for_function(
+            "getComputedStyle(document.body).maxWidth === '576px'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        _assert_probe(home, "generated-css-home")
+        _assert_probe(notes, "generated-css-notes")
+    finally:
+        context.close()
+        server.stop()
+
+
+def test_streaming_and_gzip_field_workflow(tmp_path: Path, e2e_browser: _Browser) -> None:
+    root = _copy_example(tmp_path, "streaming_site")
+    server = _start_cli(root)
+    context = e2e_browser.new_context()
+    try:
+        stream = context.new_page()
+        gzip_page = context.new_page()
+        stream.goto(f"{server.origin}/stream", wait_until="load")
+        gzip_page.goto(f"{server.origin}/gzip", wait_until="load")
+
+        status, headers, body = _http_get(server, "/gzip")
+        assert status == 200
+        assert headers["content-encoding"] == "gzip"
+        assert body.startswith(b"\x1f\x8b")
+        _wait_text(gzip_page, "Gzip HTML")
+
+        _set_probe(stream, "stream-css")
+        _set_probe(gzip_page, "gzip-css")
+        _replace(root / "static" / "site.css", "max-width: 46rem;", "max-width: 38rem;")
+        stream.wait_for_function(
+            "getComputedStyle(document.body).maxWidth === '608px'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        gzip_page.wait_for_function(
+            "getComputedStyle(document.body).maxWidth === '608px'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        _assert_probe(stream, "stream-css")
+        _assert_probe(gzip_page, "gzip-css")
+
+        _set_probe(stream, "stream-python")
+        _set_probe(gzip_page, "gzip-python")
+        _append(root / "app.py", "\nFIELD_TEST_RESTART = 1\n")
+        _wait_probe_lost(stream, "stream-python")
+        _wait_probe_lost(gzip_page, "gzip-python")
+
+        _set_probe(stream, "stream-pass-through")
+        _set_probe(gzip_page, "gzip-pass-through")
+        _replace(root / "app.py", "  {client_script()}\n", "")
+        _wait_probe_lost(stream, "stream-pass-through")
+        _wait_probe_lost(gzip_page, "gzip-pass-through")
+
+        _set_probe(stream, "stream-unsynchronized")
+        _set_probe(gzip_page, "gzip-unsynchronized")
+        _replace(root / "static" / "site.css", "max-width: 38rem;", "max-width: 30rem;")
+        time.sleep(WATCH_SETTLE_SECONDS)
+        _assert_probe(stream, "stream-unsynchronized")
+        _assert_probe(gzip_page, "gzip-unsynchronized")
+        assert stream.evaluate("getComputedStyle(document.body).maxWidth") == "608px"
+        assert gzip_page.evaluate("getComputedStyle(document.body).maxWidth") == "608px"
+    finally:
+        context.close()
+        server.stop()
+
+
+def test_explicit_integration_field_workflow(tmp_path: Path, e2e_browser: _Browser) -> None:
+    root = _copy_example(tmp_path, "integration_api")
+    server = _start_cli(root, "--restart-on", "ready.flag")
+    context = e2e_browser.new_context()
+    try:
+        home = context.new_page()
+        other = context.new_page()
+        home.goto(server.origin, wait_until="load")
+        other.goto(f"{server.origin}/other", wait_until="load")
+
+        _set_probe(home, "dependency-home")
+        _set_probe(other, "dependency-other")
+        (root / "content" / "page.txt").write_text(
+            "The explicit render dependency changed.\n",
+            encoding="utf-8",
+        )
+        _wait_text(home, "The explicit render dependency changed.")
+        _wait_probe_lost(home, "dependency-home")
+        _assert_probe(other, "dependency-other")
+
+        _set_probe(home, "counter-home")
+        (root / "data" / "counter.json").write_text('{"value": 2}\n', encoding="utf-8")
+        home.wait_for_function(
+            "document.querySelector('#counter').textContent === '2'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        _assert_probe(home, "counter-home")
+
+        home.evaluate("document.querySelector('#draft').value = 'preserve this draft'")
+        _set_probe(home, "draft-home")
+        _set_probe(other, "draft-other")
+        _append(root / "app.py", "\nFIELD_TEST_RESTART = 1\n")
+        _wait_probe_lost(home, "draft-home")
+        _wait_probe_lost(other, "draft-other")
+        home.wait_for_function(
+            "document.querySelector('#draft').value === 'preserve this draft'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+
+        _set_probe(home, "blocked-home")
+        _set_probe(other, "blocked-other")
+        (root / "ready.flag").write_text("blocked\n", encoding="utf-8")
+        home.wait_for_function(
+            "document.querySelector('#server-error').textContent.length > 0",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        _assert_probe(home, "blocked-home")
+        _assert_probe(other, "blocked-other")
+
+        (root / "ready.flag").write_text("ready\n", encoding="utf-8")
+        _wait_probe_lost(home, "blocked-home")
+        _wait_probe_lost(other, "blocked-other")
         assert server.process.poll() is None
     finally:
         context.close()
