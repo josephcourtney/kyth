@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -85,11 +86,7 @@ def test_render_provenance_detects_same_size_atomic_replacement_with_preserved_m
 
     replacement = tmp_path / "replacement.html"
     replacement.write_text("other", encoding="utf-8")
-    replacement.touch()
     replacement_stat = replacement.stat()
-    replacement.touch()
-    import os
-
     os.utime(replacement, ns=(replacement_stat.st_atime_ns, version.mtime_ns or 0))
     replacement.replace(source)
 
