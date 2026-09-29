@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Kyth Jinja{% endblock %}</title>
+  <link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+  <nav><a href="/">Home</a> <a href="/about">About</a></nav>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

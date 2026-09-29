@@ -1,0 +1,17 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 48rem;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+img {
+  width: 10rem;
+  height: auto;
+}

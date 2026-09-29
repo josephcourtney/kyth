@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "outputs": [
+    {
+      "output": "public/index.html",
+      "url": "/",
+      "sources": ["content/home.txt", "build.py"]
+    },
+    {
+      "output": "public/notes.html",
+      "url": "/notes/",
+      "sources": ["content/notes.txt", "build.py"]
+    }
+  ]
+}
