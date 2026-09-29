@@ -57,6 +57,8 @@ Kyth uses several deliberately different fixture applications rather than one un
 
 The collection is intended to cover distinct semantic boundaries, not permutations that do not change Kyth behavior. Security validation of malformed control requests remains in control-plane tests; manifest schema/path validation remains in provenance tests; external frontend HMR ownership is covered by classification/policy tests rather than browser-HMR implementation tests.
 
+Additional focused regressions cover same-size atomic render-source replacement using preserved modification times, browser views that appear during generation commit, optional Jinja tracing against an unsupported adapter shape, preservation of application request content negotiation, and AVIF/BMP browser-change classification.
+
 ## Real-browser acceptance
 
 The browser acceptance module is `tests/browser/browser_acceptance.py`. Its filename intentionally does not match the default `test_*.py` pattern: normal `just check` still compiles, formats, lints, and type-checks the browser harness and fixture apps, but it does not launch or download browsers.
@@ -107,6 +109,16 @@ Every browser acceptance test is parameterized over Chromium and Firefox. The cu
 
 Browser acceptance tests observable user behavior. Internal broker/event decisions belong in the Python suite.
 
+## Persistent CI
+
+`.github/workflows/ci.yml` keeps the principal validation surfaces continuously enforced:
+
+- the `check` job runs `just check` and `just complexity --strict`;
+- the `browser` job installs the pinned Playwright builds and runs the complete Chromium/Firefox acceptance matrix;
+- tag-triggered release preflight requires both jobs to pass before running `just release-check`.
+
+The browser suite stays separate from ordinary `just check` so local validation never downloads browsers implicitly. In CI, however, browser behavior is a required peer of the Python/static gate rather than optional release evidence.
+
 ## Quality characterization
 
 Use:
@@ -138,6 +150,8 @@ Mutation testing is diagnostic rather than a release score gate. The current pol
 ## Release artifact smoke
 
 `just release-check` runs the canonical repository gate, builds distributions without local `[tool.uv.sources]` overrides, installs the version-matching wheel into a fresh environment, runs `kyth --help`, and imports the documented public Python integration functions from the installed artifact. This catches packaging/export failures that source-checkout tests cannot detect.
+
+For tagged releases, persistent CI additionally requires the independent browser job and strict complexity gate to pass before the release-smoke job can run.
 
 ## Platform matrix
 
