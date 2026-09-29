@@ -343,11 +343,12 @@ class Supervisor:
             control.mark_views_current(decision.current_view_ids, generation)
         control.set_generation(generation)
         self._publish_browser_decision(decision, generation)
+        decision = self._reconcile_late_views(decision, generation, defer_generated=True)
         logger.info(
             "replacement child ready; generation %d; %d view(s) reloaded; %d generated view(s) deferred",
             generation,
-            len(reload_view_ids),
-            len(deferred_view_ids),
+            sum(action.kind is BrowserActionKind.RELOAD for action in decision.actions),
+            len(decision.current_view_ids),
         )
         return decision
 
@@ -382,6 +383,7 @@ class Supervisor:
         self.state = replace(self.state, generation=generation)
         self._control.set_generation(generation)
         self._publish_browser_decision(decision, generation)
+        decision = self._reconcile_late_views(decision, generation, defer_generated=False)
         action_counts = {
             kind.value: sum(action.kind is kind for action in decision.actions) for kind in BrowserActionKind
         }
@@ -392,6 +394,60 @@ class Supervisor:
             action_counts,
         )
         return decision
+
+    def _reconcile_late_views(
+        self,
+        decision: BrowserUpdateDecision,
+        generation: int,
+        *,
+        defer_generated: bool,
+    ) -> BrowserUpdateDecision:
+        """Conservatively synchronize views that appeared while a generation was committed."""
+        control = self._require_control()
+        known_view_ids = {action.view_id for action in decision.actions} | set(decision.current_view_ids)
+        active_view_ids = {view.view_id for view in control.views.snapshot()}
+        late_view_ids = active_view_ids - known_view_ids
+        if not late_view_ids:
+            return decision
+
+        deferred = set(self._stale_generated_view_ids()) & late_view_ids if defer_generated else set()
+        reload_view_ids = late_view_ids - deferred
+        if deferred:
+            deferred_ids = tuple(sorted(deferred))
+            control.mark_views_current(deferred_ids, generation)
+            control.publish(
+                ControlEvent.sync(generation, reload_required=False),
+                view_ids=deferred_ids,
+            )
+        for view_id in sorted(reload_view_ids):
+            control.publish(
+                ControlEvent.reload(generation, reason=decision.reason),
+                view_ids=(view_id,),
+            )
+
+        actions = tuple(
+            sorted(
+                (
+                    *decision.actions,
+                    *(BrowserAction(view_id, BrowserActionKind.RELOAD) for view_id in reload_view_ids),
+                ),
+                key=lambda action: action.view_id,
+            )
+        )
+        current_view_ids = tuple(sorted(set(decision.current_view_ids) | deferred))
+        logger.debug(
+            "reconciled views that appeared during generation %d commit: reload=%s deferred=%s",
+            generation,
+            tuple(sorted(reload_view_ids)),
+            current_view_ids,
+        )
+        return BrowserUpdateDecision(
+            invalidated_paths=decision.invalidated_paths,
+            actions=actions,
+            current_view_ids=current_view_ids,
+            reason=decision.reason,
+            fallbacks=decision.fallbacks,
+        )
 
     def _browser_updates(self, changed_paths: tuple[Path, ...]) -> BrowserUpdateDecision:
         self._refresh_provenance()
