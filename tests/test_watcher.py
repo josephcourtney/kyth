@@ -70,7 +70,8 @@ def test_watcher_rejects_missing_root(tmp_path: Path) -> None:
 @pytest.mark.small
 def test_watcher_propagates_background_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     def failing_watch(*_args: object, **_kwargs: object) -> None:
-        raise OSError("watch backend failed")
+        msg = "watch backend failed"
+        raise OSError(msg)
 
     monkeypatch.setattr(watcher_module, "watch", failing_watch)
     watcher = FileWatcher(WatcherConfig(roots=(Path("/project"),)))
