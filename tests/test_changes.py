@@ -30,6 +30,19 @@ def test_classification_separates_restart_browser_and_other_paths() -> None:
 
 @pytest.mark.unit
 @pytest.mark.small
+@pytest.mark.parametrize("suffix", [".avif", ".bmp"])
+def test_supported_image_suffixes_are_browser_changes(suffix: str) -> None:
+    path = Path(f"/project/static/image{suffix}")
+    batch = FileBatch.from_events([FileEvent(path, FileOperation.MODIFIED)])
+
+    changes = classify_batch(batch)
+
+    assert changes.browser_paths == (path,)
+    assert changes.other_paths == ()
+
+
+@pytest.mark.unit
+@pytest.mark.small
 def test_configured_restart_pattern_classifies_runtime_configuration() -> None:
     batch = FileBatch.from_events([
         FileEvent(Path("/project/config/settings.yaml"), FileOperation.MODIFIED),
