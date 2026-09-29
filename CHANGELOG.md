@@ -17,6 +17,8 @@ Items should be categorized under these headings:
 
 ## Unreleased
 
+## [1.0.1] - 2026-09-29
+
 ### Changed
 
 - preserve application-visible request content negotiation instead of stripping `Accept-Encoding`; content-encoded HTML remains untouched and may opt into synchronization with `client_script()`

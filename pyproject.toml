@@ -1,7 +1,7 @@
 # =================================== project ====================================
 [project]
   name = "kyth"
-  version = "1.0.0"
+  version = "1.0.1"
   description = "Local development supervisor for Python web applications and generated websites"
   readme = "README.md"
   authors = [
