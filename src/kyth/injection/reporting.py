@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlencode, urlsplit
 
 if TYPE_CHECKING:
-    from kyth.model import RenderRecord
+    from kyth.model import RenderRecord, SourceVersion
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,17 @@ def _post_render_record(control_url: str, token: str, record: RenderRecord) -> N
         connection.close()
 
 
+def _source_payload(source: SourceVersion) -> dict[str, object]:
+    return {
+        "path": source.path,
+        "mtime_ns": source.mtime_ns,
+        "size": source.size,
+        "ctime_ns": source.ctime_ns,
+        "device": source.device,
+        "inode": source.inode,
+    }
+
+
 def _render_payload(record: RenderRecord) -> dict[str, object]:
     return {
         "render_id": record.render_id,
@@ -65,18 +76,9 @@ def _render_payload(record: RenderRecord) -> dict[str, object]:
         "data_dependencies": [
             {
                 "identity": dependency.identity,
-                "path": dependency.source.path,
-                "mtime_ns": dependency.source.mtime_ns,
-                "size": dependency.source.size,
+                **_source_payload(dependency.source),
             }
             for dependency in record.data_dependencies
         ],
-        "dependencies": [
-            {
-                "path": dependency.path,
-                "mtime_ns": dependency.mtime_ns,
-                "size": dependency.size,
-            }
-            for dependency in record.dependencies
-        ],
+        "dependencies": [_source_payload(dependency) for dependency in record.dependencies],
     }
