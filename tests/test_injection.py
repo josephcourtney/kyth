@@ -69,7 +69,7 @@ async def test_injects_client_and_rewrites_html_response_metadata() -> None:
         capture,
     )
 
-    assert received_scope["headers"] == [(b"x-test", b"yes")]
+    assert received_scope["headers"] == [(b"accept-encoding", b"gzip"), (b"x-test", b"yes")]
     assert len(sent) == 2
     start, body_message = sent
     body = body_message["body"]
