@@ -8,6 +8,7 @@ from kyth.injection import depend_on, depend_on_data, register_readiness_check
 
 ROOT = Path(__file__).parent
 PAGE_TEXT = ROOT / "content" / "page.txt"
+OTHER_TEXT = ROOT / "content" / "other.txt"
 COUNTER_DATA = ROOT / "data" / "counter.json"
 READY_FLAG = ROOT / "ready.flag"
 
@@ -68,6 +69,21 @@ def _home() -> bytes:
 """.encode()
 
 
+def _other() -> bytes:
+    depend_on(OTHER_TEXT)
+    text = OTHER_TEXT.read_text(encoding="utf-8").strip()
+    return f"""<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Other</title></head>
+<body>
+  <h1>Unrelated view</h1>
+  <p>{text}</p>
+  <a href="/">Home</a>
+</body>
+</html>
+""".encode()
+
+
 async def _respond(send: Any, status: int, body: bytes, content_type: str) -> None:
     await send({
         "type": "http.response.start",
@@ -86,8 +102,7 @@ async def app(scope: dict[str, Any], _receive: Any, send: Any) -> None:
         await _respond(send, 200, _home(), "text/html; charset=utf-8")
         return
     if path == "/other":
-        body = b"<!doctype html><title>Other</title><h1>Unrelated view</h1><a href='/'>Home</a>"
-        await _respond(send, 200, body, "text/html; charset=utf-8")
+        await _respond(send, 200, _other(), "text/html; charset=utf-8")
         return
     if path == "/api/counter":
         body = json.dumps({"value": _counter()}).encode()
