@@ -59,7 +59,7 @@ def _record() -> RenderRecord:
     return RenderRecord(
         render_id="render-1",
         generation=7,
-        dependencies=(SourceVersion("/templates/page.html", 11, 123),),
+        dependencies=(SourceVersion("/templates/page.html", 11, 123, 12, 34, 56),),
         complete=True,
         adapter="jinja",
     )
@@ -91,6 +91,9 @@ def test_post_render_record_serializes_and_closes_connection(monkeypatch: pytest
         "data_dependencies": [],
         "dependencies": [
             {
+                "ctime_ns": 12,
+                "device": 34,
+                "inode": 56,
                 "mtime_ns": 11,
                 "path": "/templates/page.html",
                 "size": 123,
