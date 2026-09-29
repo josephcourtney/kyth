@@ -138,6 +138,21 @@ def test_wait_for_startup_reports_readiness_eof() -> None:
 
 @pytest.mark.component
 @pytest.mark.small
+def test_wait_for_startup_reports_dead_child_without_readiness_event() -> None:
+    manager = _child_process(
+        _Process(alive=False, exitcode=9),
+        _Connection(polls=[False]),
+    )
+
+    result = manager.wait_for_startup(1.0)
+
+    assert not result.ready
+    assert result.error == "child exited before reporting readiness"
+    assert result.exit_code == 9
+
+
+@pytest.mark.component
+@pytest.mark.small
 def test_wait_for_startup_zero_timeout_is_immediate() -> None:
     manager = _child_process(
         _Process(),
@@ -183,6 +198,30 @@ def test_generation_update_distinguishes_dead_child_timeout() -> None:
     )
 
     with pytest.raises(RuntimeError, match="exited before applying generation update"):
+        manager.set_generation(8, timeout=1.0)
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_generation_update_reports_live_child_timeout() -> None:
+    manager = _child_process(
+        _Process(alive=True),
+        _Connection(polls=[False]),
+    )
+
+    with pytest.raises(RuntimeError, match="timed out while applying generation update"):
+        manager.set_generation(8, timeout=1.0)
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_generation_update_reports_readiness_eof() -> None:
+    manager = _child_process(
+        _Process(alive=True),
+        _Connection(received=[_EOF], polls=[True]),
+    )
+
+    with pytest.raises(RuntimeError, match="exited before confirming generation update"):
         manager.set_generation(8, timeout=1.0)
 
 
