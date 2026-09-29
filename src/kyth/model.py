@@ -39,6 +39,9 @@ class SourceVersion:
     path: str
     mtime_ns: int | None
     size: int | None
+    ctime_ns: int | None = None
+    device: int | None = None
+    inode: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
