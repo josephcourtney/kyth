@@ -64,6 +64,26 @@ def test_jinja_adapter_captures_runtime_selected_template_dependencies(
 
 @pytest.mark.unit
 @pytest.mark.small
+def test_unsupported_jinja_shape_disables_tracing_without_breaking_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FutureEnvironment:
+        def get_template(self, _name: str) -> object:
+            return object()
+
+    class FutureTemplate:
+        def render(self) -> str:
+            return "rendered"
+
+    module = SimpleNamespace(Environment=FutureEnvironment, Template=FutureTemplate)
+    monkeypatch.setattr(jinja_adapter.importlib, "import_module", lambda _name: module)
+
+    assert install_jinja_tracing() is False
+    assert "_kyth_tracing_installed" not in vars(FutureEnvironment)
+
+
+@pytest.mark.unit
+@pytest.mark.small
 def test_jinja_trace_marks_non_file_template_incomplete() -> None:
     with capture_render("render-2", 1) as trace:
         trace.record_template(SimpleNamespace(filename=None))
