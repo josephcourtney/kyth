@@ -20,6 +20,8 @@ Items should be categorized under these headings:
 ### Fixed
 
 - make spawned application children import ASGI targets relative to the Kyth invocation working directory, so console-entry-point launches such as `kyth app:app` work without manually modifying `PYTHONPATH`
+- let spawned application children finish cleanly after Ctrl-C instead of surfacing Uvicorn's post-shutdown SIGINT re-raise as a `KeyboardInterrupt` traceback
+- scope `--verbose` DEBUG logging to Kyth so third-party watcher timeout diagnostics do not flood otherwise-idle development sessions
 
 ## [1.0.1] - 2026-09-29
 
