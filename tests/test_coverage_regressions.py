@@ -198,9 +198,7 @@ def test_supervisor_close_releases_socket_when_cleanup_fails() -> None:
     app_socket.close.assert_called_once_with()
     assert supervisor._control is None
     assert supervisor._socket is None
-    assert getattr(exc_info.value, "__notes__", ()) == [
-        "control cleanup also failed: control cleanup failed"
-    ]
+    assert getattr(exc_info.value, "__notes__", ()) == ["control cleanup also failed: control cleanup failed"]
 
 
 @pytest.mark.integration
