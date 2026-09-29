@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterator
     from types import TracebackType
 
 pytestmark = [
@@ -139,7 +139,7 @@ def _start_cli(root: Path, *extra_args: str) -> _CliServer:
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     with log_path.open("w", encoding="utf-8") as log_file:
-        process = subprocess.Popen(  # noqa: S603 - test launches the repository console script
+        process = subprocess.Popen(
             command,
             cwd=root,
             env=environment,
