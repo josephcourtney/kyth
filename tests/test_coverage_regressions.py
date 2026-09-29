@@ -132,10 +132,12 @@ async def test_non_http_asgi_scope_passes_through_unchanged() -> None:
         assert await receive() == {"type": "websocket.connect"}
         await send({"type": "websocket.accept"})
 
-    async def receive() -> ASGIMessage:
+    async def receive() -> ASGIMessage:  # ruff: ignore[unused-async] - ASGI receive callbacks are async by contract
         return {"type": "websocket.connect"}
 
-    async def send(message: ASGIMessage) -> None:
+    async def send(  # ruff: ignore[unused-async] - ASGI send callbacks are async by contract
+        message: ASGIMessage,
+    ) -> None:
         sent.append(message)
 
     with patch("kyth.injection.middleware.install_jinja_tracing"):
@@ -143,7 +145,7 @@ async def test_non_http_asgi_scope_passes_through_unchanged() -> None:
             app,
             InjectionConfig(
                 control_url="http://127.0.0.1:9000",
-                token="token",
+                token=LOOPBACK_ORIGIN,
                 generation=3,
             ),
         )
