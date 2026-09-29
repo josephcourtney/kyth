@@ -63,7 +63,6 @@ class HTMLInjectionMiddleware:
             await self._app(scope, receive, send)
             return
 
-        request_scope = _without_accept_encoding(scope)
         generation = self.generation
         render_id = secrets.token_urlsafe(12)
         bootstrap = ClientBootstrap(
@@ -79,7 +78,7 @@ class HTMLInjectionMiddleware:
             method=str(scope.get("method", "GET")),
         )
         with capture_client_bootstrap(bootstrap), capture_render(render_id, generation) as trace:
-            await self._app(request_scope, receive, injector.send)
+            await self._app(scope, receive, injector.send)
 
         if injector.synchronized and trace.used:
             await report_render_record(
@@ -241,14 +240,3 @@ def _header_value(headers: list[tuple[bytes, bytes]], name: bytes) -> bytes | No
         if header_name.lower() == name:
             return value
     return None
-
-
-def _without_accept_encoding(scope: ASGIScope) -> ASGIScope:
-    raw_headers = scope.get("headers")
-    if not isinstance(raw_headers, list):
-        return scope
-
-    headers = [(name, value) for name, value in raw_headers if bytes(name).lower() != b"accept-encoding"]
-    if len(headers) == len(raw_headers):
-        return scope
-    return {**scope, "headers": headers}
