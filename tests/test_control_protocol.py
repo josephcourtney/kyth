@@ -8,7 +8,7 @@ from urllib.parse import quote
 import pytest
 
 from kyth.control import ControlService
-from kyth.control.sse import encode_sse
+from kyth.control.sse import SubscriberQueue, encode_sse
 from kyth.model import BrowserResourceKind
 from kyth.protocol import ControlEvent
 
@@ -106,6 +106,37 @@ def test_registration_and_sse_generation_sync() -> None:
         view = service.views.get("view-a")
         assert view is not None
         assert view.url == f"{LOOPBACK_ORIGIN}/page"
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_sse_initial_sync_reads_generation_after_subscription(monkeypatch: pytest.MonkeyPatch) -> None:
+    with ControlService(generation=4) as service:
+        service.views.register(
+            view_id="view-race",
+            url=f"{LOOPBACK_ORIGIN}/page",
+            generation=3,
+        )
+        original_subscribe = service._state.broker.subscribe
+
+        def subscribe_and_advance(view_id: str) -> SubscriberQueue:
+            subscriber = original_subscribe(view_id)
+            service.set_generation(5)
+            return subscriber
+
+        monkeypatch.setattr(service._state.broker, "subscribe", subscribe_and_advance)
+
+        events = http.client.HTTPConnection(*service.address, timeout=2.0)
+        events.request("GET", _event_path(service, "view-race"), headers={"Origin": LOOPBACK_ORIGIN})
+        stream = events.getresponse()
+
+        assert _read_sse_event(stream) == {
+            "id": "5",
+            "event": "sync",
+            "data": '{"data":{"reload_required":true},"generation":5}',
+        }
+        stream.close()
+        events.close()
 
 
 @pytest.mark.integration
