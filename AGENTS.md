@@ -2,246 +2,119 @@
 
 ## Purpose
 
-This file defines how AI coding agents (LLMs, autonomous development tools,
-etc.) must operate when contributing to the Mund workspace.
+This file defines how coding agents must operate when contributing to Kyth.
 
-## Role
+## Project authority
 
-Your responsibilities include:
+Read the repository documentation before making changes that depend on architecture or project state:
 
-- Editing Python source files under `packages/*/src/`
-- Creating or editing package tests under `packages/*/tests/`
-- Creating or editing cross-package tests under root `tests/`
-- Maintaining package-local architecture documents when explicitly required
-- Maintaining repository-level planning and status documents when explicitly required
-- Preserving output determinism, testability, and extensibility
-- Respecting package boundaries, authority boundaries, CLI conventions, and
-  internal architecture
-
-## Directory Constraints
-
-Mund is a `uv` workspace containing independently bounded Python packages.
-
-Repository layout:
-
-- Package source: `packages/<package>/src/<package>/`
-- Package tests: `packages/<package>/tests/`
-- Cross-package tests: `tests/`
-- Repository scripts: `scripts/`
-- Package design: `packages/<package>/DESIGN.md`
-- Package README: `packages/<package>/README.md`
-- Repository vision: `VISION.md`
-- Repository implementation plan: `PLAN.md`
-- Repository current state: `STATUS.md`
-- Repository immediate work: `TODO.md`
-- Repository change history: `CHANGELOG.md`
-- Documentation policy: `POLICY.md`
-
-Current executive packages are:
-
-- `reck`
-- `refa`
-- `shyft`
-- `scroot`
-
-Do not assume that code belonging to one package may be placed in another
-package merely because all packages share one repository.
-
-Do not create shared packages, common utility modules, shared domain models,
-or other cross-package abstractions speculatively. Introduce shared code only
-when an actual cross-package requirement or demonstrated duplication justifies
-it.
-
-## Tooling Requirements
-
-Use the root `justfile` as the canonical interface to repository tooling.
-
-Before considering implementation work complete, run the relevant validation
-recipes. For repository-wide changes, `just check` is the canonical validation
-gate.
-
-If a command fails because of a missing executable or broken environment,
-report the failure clearly. Do not work around the configured toolchain by
-silently substituting unrelated tools.
-
-### Package Management
-
-- Command: `uv`
-- Rules:
-  - use `uv` for package management, dependency changes, locking, and syncing
-  - use the root workspace rather than creating package-local virtual
-    environments
-  - add dependencies to the narrowest package that actually requires them
-  - add repository-only development tooling to the root development dependency
-    group
-
-### Linting
-
-- Command: `just lint --no-fix`
-- Repair command: `just lint`
-- Rules are defined by the root `pyproject.toml`, `ruff.default.toml`, and
-  package-local Ruff configuration.
-
-### Formatting
-
-- Check: `just format --check`
-- Repair: `just format`
-
-### Static Typing
-
-- Command: `just typecheck`
-- Syntax must remain compatible with the Python range declared by the affected
-  package.
-- Constraints are defined by repository and package configuration.
-
-### Testing
-
-- Command: `just test`
-- Fast development run: `just test --fast`
-- Development-selection run: `just test --dev`
-- Coverage: Add tests for new features and regression paths
-- Constraints:
-  - Use deterministic data
-  - Avoid system-dependent values (e.g., timestamps, user paths)
-  - Put package-specific tests under that package's `tests/` directory
-  - Put tests spanning package boundaries under root `tests/`
-  - Use existing test-category markers consistently
-
-### Import Architecture
-
-- Command: `just lint-imports`
-- Package-local `import-linter.toml` files define internal package boundaries.
-- A root `import-linter.toml`, when present, defines only workspace-wide
-  cross-package constraints.
-- Do not move package-local architecture rules into the root configuration
-  merely for centralization.
-
-### Canonical Validation
-
-- Command: `just check`
-- `just check` is the repository-wide validation gate and includes syntax,
-  formatting, linting, typing, import architecture, tests, and coverage
-  reporting.
-
-## Behavior Constraints
-
-- Use POSIX-style paths (`/`) in output and JSON
-- Sort file paths and line groups deterministically
-- Omit ANSI styling in non-human formats (e.g., JSON)
-- Maintain internal consistency across toolchain and file states
-- Keep domain and behavioral policy out of CLI and other presentation code
-- Preserve package authority boundaries described by `VISION.md` and each
-  package's `DESIGN.md`
-- Preserve provenance distinctions where the design treats user reports,
-  observations, inferences, corrections, triggers, and decisions as different
-  facts
-- Prefer deleting obsolete compatibility machinery over layering new behavior
-  on top of it; this is a single-user system and backwards compatibility is
-  not a default requirement
-- Do not add speculative abstractions for hypothetical future components
-- Prefer a concrete vertical slice before generalizing architecture
-- Prefer existing, popular, well-supported libraries when appropriate
-  - For logic or functionality that is not core to the project, or is not highly customized, add an appropriate dependency rather than writing a custom version.
-
-## Logging and Progress Tracking
-
-### To-Do List Maintenance
-
-- Follow `POLICY.md`.
+- `DESIGN.md` is normative for Kyth's intended architecture and invariants.
+- `PLAN.md` records implementation sequencing and non-obvious execution strategy.
+- `STATUS.md` records the current implementation state and handoff context.
 - `TODO.md` contains only immediate unfinished work.
-- Remove completed items rather than retaining them as history.
-- Do not use `TODO.md` as a changelog or progress archive.
-- Add or rewrite TODO items when implementation work changes the immediate
-  execution frontier.
+- `CHANGELOG.md` records notable completed user-facing changes.
+- `POLICY.md` defines documentation and history responsibilities.
+- `TESTING.md` defines the intended validation layers and release evidence.
+- `ISSUES.md`, when present, records explicitly identified review/hardening issues.
 
-### Changelog Maintenance
+There is no separate `VISION.md` for this repository.
 
-Follow `POLICY.md` and Keep a Changelog conventions.
+## Repository layout
 
-- Example heading: `## [1.2.3] - 2025-08-02`
-- Allowed sections: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`
+- Python package source: `src/kyth/`
+- Tests: `tests/`
+- Browser acceptance harness: `tests/browser/`
+- Repository scripts: `scripts/`
+- Architecture contracts: `import-linter.toml`
+- Canonical development commands: `justfile`
 
-Ensure:
+Do not invent workspace/package boundaries that are not present in this repository.
 
-- changelog entries describe notable implemented changes rather than
-  task-level details
-- changelog contents match actual behavior
-- package-version changes are made only when appropriate for the affected
-  package
-- repository-wide and package-specific history are not conflated merely
-  because the packages share one workspace
+## Architectural constraints
 
-Example:
+Preserve the ownership model in `DESIGN.md` and `import-linter.toml`:
 
-```markdown
-## [1.4.0] - 2025-08-02
+- `supervisor` is the runtime orchestration boundary.
+- `watcher`, `process`, and `control` are independent mechanisms coordinated by the supervisor.
+- `changes`, `invalidation`, `fallback`, and `provenance` are independent policy/domain services.
+- `injection` is child-side infrastructure and must not reach back into supervisor-side orchestration.
+- `protocol` and `model` remain low-level shared contracts/value objects.
 
-### Added
-- add `--format json` CLI option for machine-readable output
+Keep one reload authority. Do not introduce a second watcher/reloader underneath Kyth.
 
-### Fixed
-- fix incorrect grouping of adjacent blank lines in coverage reports
-```
+Prefer conservative correctness when dependency information is incomplete. Narrow behavior only from explicit provenance or trusted scope assertions.
 
-## Commit Standards
+Do not introduce speculative plugin frameworks, graph engines, shared utility layers, or frontend-HMR abstractions without a concrete requirement.
 
-Each commit must pass:
+## Tooling
 
-- `just check`
+Use the root `justfile` as the canonical interface.
 
-Use conventional commit messages:
+### Package management
 
-- `feat: add --format json`
-- `fix: handle missing <class> tag in coverage XML`
-- `test: add tests for merge_blank_gap_groups`
+- Use `uv` for dependency changes, syncing, and execution.
+- Add runtime dependencies only when Kyth itself requires them.
+- Add development-only tooling to the root development dependency group.
 
-Before submitting a pull request:
+### Validation
 
-- update documentation required by `POLICY.md`
-- update the affected package version only when the change warrants a release
-- update changelog entries for notable completed changes
+Before considering repository changes complete, run the relevant gates:
 
-## Prohibited Behavior
+- `just syntax`
+- `just format --check`
+- `just lint --no-fix`
+- `just typecheck`
+- `just lint-imports`
+- `just test`
+- `just cov`
+- `just complexity --strict`
 
-- Do not introduce dependencies between executive packages merely for
-  implementation convenience
-- Do not bypass semantic exchange boundaries by importing another executive
-  package's internal domain/application implementation
-- Do not create a generic shared `common`, `core`, or `utils` package without a
-  demonstrated cross-package requirement
-- Do not preserve obsolete APIs, schemas, migrations, adapters, or abstraction
-  layers solely for backwards compatibility unless explicitly requested
-- Do not introduce non-determinism (e.g., random output, time-dependent data)
-- Do not put domain policy in CLI code
-- Do not treat objective activity as proof of subjective attention
-- Do not silently collapse user reports, observations, inferences, corrections,
-  or explicit decisions into one representation
+`just check` is the canonical ordinary repository-wide gate.
 
-## Assumptions and Capabilities
+Browser behavior is a separate required validation surface for changes affecting injection, control synchronization, provenance-driven browser actions, or release readiness:
 
-You must assume:
+- install pinned browsers once with `just browser-install`
+- run `just browser-test`
 
-- Each task starts with only the current file state
-- `VISION.md` is normative for workspace-level authority boundaries
-- each package's `DESIGN.md` is normative for that package's architecture
-- `PLAN.md` describes future implementation sequencing
-- `STATUS.md` describes current implementation state
-- `TODO.md` describes immediate unfinished work
-- `CHANGELOG.md` records notable completed changes
-- `POLICY.md` governs documentation responsibilities
-- relevant design, status, TODO, and changelog material must be read before
-  making changes that depend on project history or current intent
+Use `just release-check` for source/build/installed-wheel release smoke. The persistent CI release gate additionally requires the browser job to pass.
 
-If lacking access to shell or file I/O:
+Mutation testing is diagnostic hardening input rather than a headline release score. Expand its scope only when a concrete policy risk makes additional mutants useful.
 
-- Emit a Markdown-formatted patch containing proposed edits
-- Describe expected outputs of toolchain commands
-- Do not claim that validation was run
+### Tests
 
-## Compliance
+Use the narrowest truthful categories already defined in `pyproject.toml`.
 
-All actions must follow this protocol unless:
+- `small`: hermetic; no filesystem, network, subprocess, database, or sleep
+- `medium`: filesystem, localhost networking, and subprocesses are allowed
+- keep policy/property tests pure where practical
+- add focused regression tests for fixed correctness defects
+- do not relabel I/O-bound tests merely to improve size distribution
 
-- Overridden by an explicit user instruction
-- Covered by a documented exception in this file
+## Implementation rules
 
+- Keep domain and invalidation policy out of CLI and transport code.
+- Keep filesystem observation separate from classification policy.
+- Keep browser transport separate from invalidation decisions.
+- Preserve deterministic ordering in paths, actions, and serialized values.
+- Use POSIX-style paths in user-visible/configuration formats where specified by the design.
+- Preserve the documented 1.x compatibility surface in `README.md` unless an intentional breaking release is being prepared.
+- Internal `kyth.*` modules may evolve, but avoid accidental expansion of the public API.
+- Prefer deleting obsolete compatibility machinery over layering new behavior onto it when the compatibility surface does not require preservation.
+- Prefer established libraries for non-core generic functionality rather than implementing substitutes.
+
+## Documentation and history
+
+Follow `POLICY.md`.
+
+- Keep `STATUS.md` compact and current.
+- Keep only immediate unfinished work in `TODO.md`.
+- Record notable completed behavior in `CHANGELOG.md`.
+- Keep `ISSUES.md` synchronized with any active review-hardening effort; once all items are resolved and captured in release history, it may be removed rather than becoming a permanent second backlog.
+
+Use conventional commit messages for normal commits, for example:
+
+- `fix: reconcile late browser views after generation commit`
+- `test: cover atomic render source replacement`
+- `docs: clarify loopback control-plane limitation`
+
+Do not claim validation was run unless it actually ran. If the configured toolchain cannot be executed, state that limitation explicitly.
