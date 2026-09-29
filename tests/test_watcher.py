@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from watchfiles import Change
 
+import kyth.watcher as watcher_module
 from kyth.model import FileBatch, FileEvent, FileOperation
 from kyth.watcher import BatchDeduplicator, FileWatcher, WatcherConfig, normalize_changes
 
@@ -53,6 +54,33 @@ def test_drain_pending_merges_all_waiting_batches() -> None:
 
     assert watcher.drain_pending() == first.merged(second)
     assert watcher.drain_pending() is None
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_watcher_rejects_missing_root(tmp_path: Path) -> None:
+    missing = tmp_path / "missing"
+    watcher = FileWatcher(WatcherConfig(roots=(missing,)))
+
+    with pytest.raises(FileNotFoundError, match="watched path does not exist"):
+        watcher.start()
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_watcher_propagates_background_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_watch(*_args: object, **_kwargs: object) -> None:
+        raise OSError("watch backend failed")
+
+    monkeypatch.setattr(watcher_module, "watch", failing_watch)
+    watcher = FileWatcher(WatcherConfig(roots=(Path("/project"),)))
+
+    watcher._run()
+
+    with pytest.raises(RuntimeError, match="filesystem watcher failed") as exc_info:
+        watcher.next_batch(timeout=0)
+
+    assert isinstance(exc_info.value.__cause__, OSError)
 
 
 @pytest.mark.integration
