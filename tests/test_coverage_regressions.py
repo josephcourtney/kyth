@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import http.client
+import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -10,11 +12,21 @@ from urllib.parse import quote
 import pytest
 
 from kyth.control import ControlService
+from kyth.injection.middleware import (
+    ASGIMessage,
+    ASGIScope,
+    HTMLInjectionMiddleware,
+    InjectionConfig,
+    Receive,
+    Send,
+)
 from kyth.invalidation import BrowserUpdateDecision
 from kyth.model import ChildState, ChildStatus, DevelopmentState
 from kyth.supervisor import Supervisor, SupervisorConfig
 
 if TYPE_CHECKING:
+    import socket
+
     from kyth.process.manager import ChildProcess
 
 LOOPBACK_ORIGIN = "http://127.0.0.1:8000"
@@ -106,3 +118,129 @@ def test_browser_generation_update_failure_falls_back_to_restart() -> None:
 
     assert result is restarted
     restart.assert_called_once_with(changed)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.asyncio
+async def test_non_http_asgi_scope_passes_through_unchanged() -> None:
+    seen_scopes: list[ASGIScope] = []
+    sent: list[ASGIMessage] = []
+
+    async def app(scope: ASGIScope, receive: Receive, send: Send) -> None:
+        seen_scopes.append(scope)
+        assert await receive() == {"type": "websocket.connect"}
+        await send({"type": "websocket.accept"})
+
+    async def receive() -> ASGIMessage:
+        return {"type": "websocket.connect"}
+
+    async def send(message: ASGIMessage) -> None:
+        sent.append(message)
+
+    with patch("kyth.injection.middleware.install_jinja_tracing"):
+        middleware = HTMLInjectionMiddleware(
+            app,
+            InjectionConfig(
+                control_url="http://127.0.0.1:9000",
+                token="token",
+                generation=3,
+            ),
+        )
+
+    scope: ASGIScope = {"type": "websocket", "path": "/ws"}
+    await middleware(scope, receive, send)
+
+    assert seen_scopes == [scope]
+    assert sent == [{"type": "websocket.accept"}]
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_supervisor_open_releases_resources_when_control_start_fails() -> None:
+    supervisor = Supervisor(SupervisorConfig("example:app"))
+    app_socket = Mock()
+    control = Mock()
+    control.start.side_effect = RuntimeError("control start failed")
+
+    with (
+        patch("kyth.supervisor.bind_listening_socket", return_value=app_socket),
+        patch("kyth.supervisor.ControlService", return_value=control),
+        pytest.raises(RuntimeError, match="control start failed"),
+    ):
+        supervisor.open()
+
+    control.close.assert_called_once_with()
+    app_socket.close.assert_called_once_with()
+    assert supervisor._socket is None
+    assert supervisor._control is None
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_supervisor_close_releases_socket_when_cleanup_fails() -> None:
+    supervisor = Supervisor(SupervisorConfig("example:app"))
+    supervisor._child = cast("ChildProcess", object())
+    control = Mock()
+    control.close.side_effect = RuntimeError("control cleanup failed")
+    app_socket = Mock()
+    supervisor._control = cast("ControlService", control)
+    supervisor._socket = cast("socket.socket", app_socket)
+    child_error = RuntimeError("child cleanup failed")
+
+    with (
+        patch.object(supervisor, "stop_child", side_effect=child_error),
+        pytest.raises(RuntimeError, match="child cleanup failed") as exc_info,
+    ):
+        supervisor.close()
+
+    control.close.assert_called_once_with()
+    app_socket.close.assert_called_once_with()
+    assert supervisor._control is None
+    assert supervisor._socket is None
+    assert getattr(exc_info.value, "__notes__", ()) == [
+        "control cleanup also failed: control cleanup failed"
+    ]
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_invalid_manifest_reload_preserves_last_valid_index(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    source_path = tmp_path / "content.md"
+    output_path = tmp_path / "public" / "index.html"
+    manifest_path = tmp_path / "kyth-manifest.json"
+    output_path.parent.mkdir()
+    source_path.write_text("source", encoding="utf-8")
+    output_path.write_text("<html>old</html>", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps({
+            "version": 1,
+            "outputs": [
+                {
+                    "output": "public/index.html",
+                    "url": "/",
+                    "sources": ["content.md"],
+                }
+            ],
+        }),
+        encoding="utf-8",
+    )
+    supervisor = Supervisor(
+        SupervisorConfig(
+            "example:app",
+            watch_roots=(tmp_path,),
+            manifest_paths=(manifest_path,),
+        )
+    )
+    supervisor._generated.load_all()
+    expected_outputs = supervisor._generated.known_outputs
+
+    manifest_path.write_text("{", encoding="utf-8")
+    with caplog.at_level(logging.ERROR, logger="kyth.supervisor"):
+        supervisor._refresh_changed_manifests((manifest_path,))
+
+    assert supervisor._generated.known_outputs == expected_outputs
+    assert "generated dependency manifest reload failed" in caplog.text
