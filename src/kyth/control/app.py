@@ -529,6 +529,9 @@ def _source_version(value: object) -> SourceVersion:
         path=path,
         mtime_ns=_optional_nonnegative_int(value, "mtime_ns"),
         size=_optional_nonnegative_int(value, "size"),
+        ctime_ns=_optional_nonnegative_int(value, "ctime_ns"),
+        device=_optional_nonnegative_int(value, "device"),
+        inode=_optional_nonnegative_int(value, "inode"),
     )
 
 
@@ -607,6 +610,17 @@ def _required_nonnegative_int(payload: dict[str, object], key: str) -> int:
     return value
 
 
+def _source_payload(source: SourceVersion) -> dict[str, object]:
+    return {
+        "path": source.path,
+        "mtime_ns": source.mtime_ns,
+        "size": source.size,
+        "ctime_ns": source.ctime_ns,
+        "device": source.device,
+        "inode": source.inode,
+    }
+
+
 def _render_payload(record: RenderRecord) -> dict[str, object]:
     return {
         "render_id": record.render_id,
@@ -616,20 +630,11 @@ def _render_payload(record: RenderRecord) -> dict[str, object]:
         "data_dependencies": [
             {
                 "identity": dependency.identity,
-                "path": dependency.source.path,
-                "mtime_ns": dependency.source.mtime_ns,
-                "size": dependency.source.size,
+                **_source_payload(dependency.source),
             }
             for dependency in record.data_dependencies
         ],
-        "dependencies": [
-            {
-                "path": dependency.path,
-                "mtime_ns": dependency.mtime_ns,
-                "size": dependency.size,
-            }
-            for dependency in record.dependencies
-        ],
+        "dependencies": [_source_payload(dependency) for dependency in record.dependencies],
     }
 
 
