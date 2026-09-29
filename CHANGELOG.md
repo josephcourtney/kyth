@@ -17,6 +17,18 @@ Items should be categorized under these headings:
 
 ## Unreleased
 
+### Changed
+
+- preserve application-visible request content negotiation instead of stripping `Accept-Encoding`; content-encoded HTML remains untouched and may opt into synchronization with `client_script()`
+- make zero-touch Jinja tracing fail soft when an installed Jinja runtime does not expose the supported tracing shape
+- restore persistent GitHub Actions validation for the canonical check, strict complexity gate, Chromium/Firefox acceptance, and tag release preflight
+
+### Fixed
+
+- classify `.avif` and `.bmp` changes as browser-facing so directly observed images cannot remain stale
+- reconcile browser views that appear while a development generation is being committed so a connection/registration race cannot miss invalidation
+- strengthen render/data source versions with change-time and filesystem identity metadata so same-size atomic replacements with preserved modification times are still detected as stale
+
 ## [1.0.0] - 2026-09-20
 
 ### Added
