@@ -691,7 +691,7 @@ browser-install:
   just _log_end browser-install
 
 
-# Run the black-box browser client acceptance suite. Browser installation is
+# Run the focused browser client acceptance suite. Browser installation is
 # explicit so ordinary checks never download or update a browser implicitly.
 [group('testing')]
 browser-test:
@@ -713,6 +713,37 @@ browser-test:
       tests/browser/browser_acceptance.py
 
   just _log_end browser-test
+
+
+# Run the local black-box workflows against the example projects using the
+# actual Kyth console entry point and both pinned browser engines.
+[group('testing')]
+browser-e2e:
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  just _log_start browser-e2e
+  just _cache_dirs
+
+  if [ ! -d "{{PLAYWRIGHT_BROWSERS_DIR}}" ]; then
+    echo "[browser-e2e] browser binaries are not installed; run: just browser-install" >&2
+    exit 1
+  fi
+
+  PLAYWRIGHT_BROWSERS_PATH="{{PLAYWRIGHT_BROWSERS_DIR}}" \
+    {{UV}} run --with "playwright=={{PLAYWRIGHT_VERSION}}" \
+      --with "jinja2>=3.1,<4" \
+      pytest -o cache_dir="{{PYTEST_CACHE_DIR}}" --no-cov \
+      tests/browser/e2e_examples.py
+
+  just _log_end browser-e2e
+
+
+# Run both local Playwright suites. This is deliberately not part of `check`
+# or any GitHub Actions workflow because browser acceptance is an explicit
+# local validation step.
+[group('testing')]
+browser-all: browser-test browser-e2e
 
 
 # ======================================================================
