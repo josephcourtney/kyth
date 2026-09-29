@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import signal
 import sys
 import tempfile
 import threading
@@ -112,6 +113,10 @@ def run_child(
                 daemon=True,
             )
             control_thread.start()
+            # Uvicorn restores the prior SIGINT handler and re-raises captured
+            # signals after graceful shutdown. The child should not turn that
+            # bookkeeping re-raise into an uncaught KeyboardInterrupt.
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
             asyncio.run(server.serve(sockets=[listening_socket]))
     finally:
         readiness.close()
