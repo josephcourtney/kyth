@@ -28,7 +28,7 @@ class ObservedPathState:
 
 
 class BatchDeduplicator:
-    """Suppress batches that do not describe a new observed filesystem state."""
+    """Suppress duplicate states and reduce each changed path to its final state."""
 
     def __init__(self) -> None:
         self._states: dict[Path, ObservedPathState] = {}
@@ -36,11 +36,13 @@ class BatchDeduplicator:
     def filter(self, batch: FileBatch) -> FileBatch:
         retained: list[FileEvent] = []
         for path in batch.paths:
+            previous = self._states.get(path)
             state = _observe_path(path)
-            if self._states.get(path) == state:
+            if previous == state:
                 continue
             self._states[path] = state
-            retained.extend(event for event in batch.events if event.path == path)
+            events = tuple(event for event in batch.events if event.path == path)
+            retained.append(FileEvent(path, _final_operation(events, previous=previous, state=state)))
         return FileBatch.from_events(retained)
 
 
@@ -151,7 +153,7 @@ class FileWatcher:
         return self
 
     def __exit__(self, *_args: object) -> None:
-        """Stop watching when leaving the context."""
+        """Stop watching when leaving its context."""
         self.close()
 
     def _run(self) -> None:
@@ -176,6 +178,23 @@ class FileWatcher:
             return
         msg = "filesystem watcher failed"
         raise RuntimeError(msg) from self._error
+
+
+def _final_operation(
+    events: tuple[FileEvent, ...],
+    *,
+    previous: ObservedPathState | None,
+    state: ObservedPathState,
+) -> FileOperation:
+    """Describe the final observed state instead of contradictory watcher noise."""
+    if not state.exists:
+        return FileOperation.DELETED
+    if previous is not None and not previous.exists:
+        return FileOperation.ADDED
+    operations = {event.operation for event in events}
+    if previous is None and operations == {FileOperation.ADDED}:
+        return FileOperation.ADDED
+    return FileOperation.MODIFIED
 
 
 def _absolute(path: Path) -> Path:
