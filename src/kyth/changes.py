@@ -11,29 +11,6 @@ if TYPE_CHECKING:
     from kyth.model import FileBatch
 
 PYTHON_SUFFIXES = frozenset({".py", ".pyi", ".pyx"})
-BROWSER_SUFFIXES = frozenset({
-    ".avif",
-    ".bmp",
-    ".css",
-    ".gif",
-    ".htm",
-    ".html",
-    ".ico",
-    ".jpeg",
-    ".jpg",
-    ".js",
-    ".json",
-    ".map",
-    ".mjs",
-    ".cjs",
-    ".otf",
-    ".png",
-    ".svg",
-    ".ttf",
-    ".webp",
-    ".woff",
-    ".woff2",
-})
 RESTART_FILENAMES = frozenset({"pyproject.toml"})
 
 
@@ -122,9 +99,14 @@ def classify_path(
         return ChangeEffect.SERVER_RESTART
     if any(path.match(pattern) for pattern in active_policy.external_hmr_patterns):
         return ChangeEffect.EXTERNAL_HMR
-    if fallback_scoped or path.suffix.lower() in BROWSER_SUFFIXES:
-        return ChangeEffect.BROWSER_CHANGE
-    return ChangeEffect.OTHER
+
+    # Kyth's correctness fallback is conservative: a watched file that is not
+    # known to be server-only or externally HMR-owned may contribute to a
+    # rendered view even when its suffix is unfamiliar. Runtime provenance and
+    # fallback scopes can narrow the affected view set later, but missing
+    # provenance must never turn a potentially relevant edit into no action.
+    _ = fallback_scoped
+    return ChangeEffect.BROWSER_CHANGE
 
 
 def _requires_restart(path: Path, policy: ChangePolicy) -> bool:
