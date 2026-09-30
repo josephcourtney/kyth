@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 REPORT_TIMEOUT_SECONDS = 1.0
+MAX_REPORT_BODY_BYTES = 64 * 1024
 
 
 async def report_render_record(
@@ -35,7 +36,7 @@ def _post_render_record(control_url: str, token: str, record: RenderRecord) -> N
         raise ValueError(msg)
 
     path = f"/renders?{urlencode({'token': token})}"
-    body = json.dumps(_render_payload(record), separators=(",", ":"), sort_keys=True)
+    body = _render_body(record)
     connection = http.client.HTTPConnection(
         parsed.hostname,
         parsed.port,
@@ -54,6 +55,47 @@ def _post_render_record(control_url: str, token: str, record: RenderRecord) -> N
             logger.debug("render provenance report rejected with HTTP %d", response.status)
     finally:
         connection.close()
+
+
+def _render_body(record: RenderRecord, *, max_bytes: int = MAX_REPORT_BODY_BYTES) -> str:
+    """Serialize provenance, truncating only precision when the HTTP budget is exceeded."""
+    payload = _render_payload(record)
+    body = _encode_payload(payload)
+    if len(body.encode()) <= max_bytes:
+        return body
+
+    dependencies = list(payload["dependencies"])
+    data_dependencies = list(payload["data_dependencies"])
+    payload["complete"] = False
+    payload["dependencies"] = []
+    payload["data_dependencies"] = []
+    body = _encode_payload(payload)
+
+    # Preserve a balanced prefix of ordinary and data dependencies. A skipped
+    # oversized item does not prevent later, smaller entries from fitting.
+    for index in range(max(len(dependencies), len(data_dependencies))):
+        for key, values in (
+            ("dependencies", dependencies),
+            ("data_dependencies", data_dependencies),
+        ):
+            if index >= len(values):
+                continue
+            selected = payload[key]
+            if not isinstance(selected, list):
+                msg = f"internal provenance payload field {key!r} is not a list"
+                raise TypeError(msg)
+            selected.append(values[index])
+            candidate = _encode_payload(payload)
+            if len(candidate.encode()) <= max_bytes:
+                body = candidate
+            else:
+                selected.pop()
+
+    return body
+
+
+def _encode_payload(payload: dict[str, object]) -> str:
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True)
 
 
 def _source_payload(source: SourceVersion) -> dict[str, object]:
