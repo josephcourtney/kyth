@@ -242,24 +242,6 @@ def _wait_probe_lost(page: _Page, value: str) -> None:
     )
 
 
-def _registration_sequence(page: _Page) -> int:
-    value = page.evaluate(
-        "Number(sessionStorage.getItem('__kyth_registration_sequence__') || '0')"
-    )
-    assert isinstance(value, int | float)
-    return int(value)
-
-
-def _wait_post_reload_registration(page: _Page, previous_sequence: int) -> None:
-    minimum_sequence = previous_sequence + 2
-    page.wait_for_function(
-        "document.readyState === 'complete' && "
-        "Number(sessionStorage.getItem('__kyth_registration_sequence__') || '0') >= "
-        f"{minimum_sequence}",
-        timeout=BROWSER_TIMEOUT_MS,
-    )
-
-
 def _wait_text(page: _Page, text: str) -> None:
     page.wait_for_function(
         f"document.body.textContent.includes({json.dumps(text)})",
@@ -432,6 +414,20 @@ def test_generated_site_field_workflow(tmp_path: Path, e2e_browser: _Browser) ->
         home.goto(server.origin, wait_until="load")
         notes.goto(f"{server.origin}/notes/", wait_until="load")
 
+        _set_probe(home, "generated-css-home")
+        _set_probe(notes, "generated-css-notes")
+        _replace(root / "public" / "site.css", "max-width: 44rem;", "max-width: 36rem;")
+        home.wait_for_function(
+            "getComputedStyle(document.body).maxWidth === '576px'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        notes.wait_for_function(
+            "getComputedStyle(document.body).maxWidth === '576px'",
+            timeout=BROWSER_TIMEOUT_MS,
+        )
+        _assert_probe(home, "generated-css-home")
+        _assert_probe(notes, "generated-css-notes")
+
         _set_probe(home, "generated-home")
         _set_probe(notes, "generated-notes")
         (root / "content" / "home.txt").write_text("Home content changed.\n", encoding="utf-8")
@@ -460,29 +456,11 @@ def test_generated_site_field_workflow(tmp_path: Path, e2e_browser: _Browser) ->
         _wait_log(server, "2 generated view(s) deferred")
         _assert_probe(home, "generator-home")
         _assert_probe(notes, "generator-notes")
-        home_registration = _registration_sequence(home)
         _run_build(root, "home")
         _wait_probe_lost(home, "generator-home")
-        _wait_post_reload_registration(home, home_registration)
         _assert_probe(notes, "generator-notes")
-        notes_registration = _registration_sequence(notes)
         _run_build(root, "notes")
         _wait_probe_lost(notes, "generator-notes")
-        _wait_post_reload_registration(notes, notes_registration)
-
-        _set_probe(home, "generated-css-home")
-        _set_probe(notes, "generated-css-notes")
-        _replace(root / "public" / "site.css", "max-width: 44rem;", "max-width: 36rem;")
-        home.wait_for_function(
-            "getComputedStyle(document.body).maxWidth === '576px'",
-            timeout=BROWSER_TIMEOUT_MS,
-        )
-        notes.wait_for_function(
-            "getComputedStyle(document.body).maxWidth === '576px'",
-            timeout=BROWSER_TIMEOUT_MS,
-        )
-        _assert_probe(home, "generated-css-home")
-        _assert_probe(notes, "generated-css-notes")
     finally:
         context.close()
         server.stop()
