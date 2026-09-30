@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from kyth.control.app import MAX_REQUEST_BODY
 from kyth.injection import reporting
 from kyth.injection.html import SESSION_STORAGE_KEYS, SESSION_TOKEN_KEY, augment_csp, browser_script
 from kyth.model import FileBatch, FileEvent, FileOperation, RenderRecord, SourceVersion
@@ -38,7 +39,7 @@ class _BrokenControlConnection:
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_browser_bootstrap_resets_persistent_state_when_control_session_changes() -> None:
+def test_browser_bootstrap_resets_persistent_state_before_loading_client() -> None:
     source = browser_script(
         control_url="http://127.0.0.1:9001",
         token="session-token",
@@ -52,6 +53,7 @@ def test_browser_bootstrap_resets_persistent_state_when_control_session_changes(
     for key in SESSION_STORAGE_KEYS:
         assert key in source
     assert "sessionStorage.removeItem" in source
+    assert source.index(SESSION_TOKEN_KEY) < source.index("data-kyth-control")
 
 
 @pytest.mark.unit
@@ -103,6 +105,12 @@ def test_batch_deduplicator_uses_final_filesystem_state_for_conflicting_events(t
     filtered = BatchDeduplicator().filter(noisy)
 
     assert filtered.events == (FileEvent(output, FileOperation.DELETED),)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_provenance_sender_budget_matches_control_plane_limit() -> None:
+    assert reporting.MAX_REPORT_BODY_BYTES == MAX_REQUEST_BODY
 
 
 @pytest.mark.unit
