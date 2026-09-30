@@ -8,7 +8,7 @@ from kyth.model import FileBatch, FileEvent, FileOperation
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_classification_separates_restart_browser_and_other_paths() -> None:
+def test_classification_separates_restart_and_browser_paths() -> None:
     batch = FileBatch.from_events([
         FileEvent(Path("/project/src/app.py"), FileOperation.MODIFIED),
         FileEvent(Path("/project/.env.development"), FileOperation.MODIFIED),
@@ -23,7 +23,7 @@ def test_classification_separates_restart_browser_and_other_paths() -> None:
         "app.py": ChangeEffect.SERVER_RESTART,
         ".env.development": ChangeEffect.SERVER_RESTART,
         "index.html": ChangeEffect.BROWSER_CHANGE,
-        "README.md": ChangeEffect.OTHER,
+        "README.md": ChangeEffect.BROWSER_CHANGE,
     }
     assert changes.requires_restart
 
@@ -43,7 +43,7 @@ def test_supported_image_suffixes_are_browser_changes(suffix: str) -> None:
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_configured_restart_pattern_classifies_runtime_configuration() -> None:
+def test_configured_restart_pattern_overrides_conservative_browser_default() -> None:
     batch = FileBatch.from_events([
         FileEvent(Path("/project/config/settings.yaml"), FileOperation.MODIFIED),
         FileEvent(Path("/project/content/article.yaml"), FileOperation.MODIFIED),
@@ -54,7 +54,7 @@ def test_configured_restart_pattern_classifies_runtime_configuration() -> None:
     effects = {item.path.name: item.effect for item in changes.paths}
     assert effects == {
         "settings.yaml": ChangeEffect.SERVER_RESTART,
-        "article.yaml": ChangeEffect.OTHER,
+        "article.yaml": ChangeEffect.BROWSER_CHANGE,
     }
 
 
@@ -86,7 +86,19 @@ def test_external_hmr_pattern_suppresses_kyth_browser_classification() -> None:
 
 @pytest.mark.unit
 @pytest.mark.small
-def test_fallback_scoped_source_is_browser_change_even_without_browser_suffix() -> None:
+def test_unknown_suffix_is_conservatively_browser_relevant_without_provenance() -> None:
+    source = Path("/project/content/article.md")
+    batch = FileBatch.from_events([FileEvent(source, FileOperation.MODIFIED)])
+
+    changes = classify_batch(batch)
+
+    assert changes.browser_paths == (source,)
+    assert changes.other_paths == ()
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_fallback_scope_does_not_weaken_conservative_classification() -> None:
     source = Path("/project/content/article.md")
     batch = FileBatch.from_events([FileEvent(source, FileOperation.MODIFIED)])
 
