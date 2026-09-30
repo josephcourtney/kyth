@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -16,6 +15,7 @@ from kyth.watcher import BatchDeduplicator
 if TYPE_CHECKING:
     from multiprocessing.connection import Connection
     from multiprocessing.process import BaseProcess
+    from pathlib import Path
 
 
 class _AliveProcess:
@@ -42,7 +42,7 @@ class _BrokenControlConnection:
 def test_browser_bootstrap_resets_persistent_state_before_loading_client() -> None:
     source = browser_script(
         control_url="http://127.0.0.1:9001",
-        token="session-token",
+        token="session-token",  # ruff: ignore[hardcoded-password-func-arg]
         generation=1,
         render_id="render-id",
         nonce="nonce",

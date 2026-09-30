@@ -21,7 +21,7 @@ SESSION_STORAGE_KEYS = (
     "__kyth_pending_generation__",
     "__kyth_preserved_state__",
 )
-SESSION_TOKEN_KEY = "__kyth_session_token__"
+SESSION_TOKEN_KEY = "__kyth_session_token__"  # ruff: ignore[hardcoded-password-string]
 
 
 def rewrite_cache_headers(headers: Iterable[tuple[bytes, bytes]]) -> list[tuple[bytes, bytes]]:
