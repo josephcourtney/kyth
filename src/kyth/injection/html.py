@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,6 +15,13 @@ CACHE_VALIDATOR_HEADERS = frozenset({
     b"last-modified",
 })
 DEVELOPMENT_CACHE_HEADERS = CACHE_VALIDATOR_HEADERS | {b"cache-control", b"expires"}
+SESSION_STORAGE_KEYS = (
+    "__kyth_view_id__",
+    "__kyth_registration_sequence__",
+    "__kyth_pending_generation__",
+    "__kyth_preserved_state__",
+)
+SESSION_TOKEN_KEY = "__kyth_session_token__"
 
 
 def rewrite_cache_headers(headers: Iterable[tuple[bytes, bytes]]) -> list[tuple[bytes, bytes]]:
@@ -31,7 +39,7 @@ def browser_script(
     render_id: str,
     nonce: str,
 ) -> bytes:
-    """Build the external Kyth client tag injected into a development page."""
+    """Build session guard and external Kyth client tags for a development page."""
     src = f"{control_url}/client.js?token={token}"
     attributes = {
         "src": src,
@@ -42,7 +50,20 @@ def browser_script(
         "data-kyth-render-id": render_id,
     }
     rendered = " ".join(f'{name}="{html.escape(value, quote=True)}"' for name, value in attributes.items())
-    return f"<script {rendered}></script>".encode()
+    escaped_nonce = html.escape(nonce, quote=True)
+    session_guard = (
+        f'<script nonce="{escaped_nonce}">'
+        "try{"
+        f"const k={json.dumps(SESSION_TOKEN_KEY)};"
+        f"const t={json.dumps(token)};"
+        "if(sessionStorage.getItem(k)!==t){"
+        f"for(const x of {json.dumps(SESSION_STORAGE_KEYS)})sessionStorage.removeItem(x);"
+        "sessionStorage.setItem(k,t);"
+        "}"
+        "}catch{}"
+        "</script>"
+    )
+    return f"{session_guard}<script {rendered}></script>".encode()
 
 
 def inject_script(body: bytes, script: bytes) -> bytes:
