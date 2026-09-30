@@ -17,8 +17,17 @@ Items should be categorized under these headings:
 
 ## Unreleased
 
+### Changed
+
+- treat every watched path that is not a restart input or externally owned HMR input as conservatively browser-relevant, so missing runtime provenance reduces reload precision instead of suppressing invalidation
+
 ### Fixed
 
+- reset tab-scoped Kyth generation, view, registration, and preserved-state data when the supervisor control session changes, preventing stale generations from surviving a Kyth restart
+- recover from broken child-control pipes during generation updates by routing them through the supervisor's normal restart path
+- preserve CSP first-duplicate-wins semantics and augment each policy in a CSP policy list independently
+- reduce contradictory watcher notifications to the final observed filesystem state before generated-output readiness decisions
+- bound render-provenance reports to the control-plane request budget and mark truncated records incomplete instead of silently sending an oversized request
 - make spawned application children import ASGI targets relative to the Kyth invocation working directory, so console-entry-point launches such as `kyth app:app` work without manually modifying `PYTHONPATH`
 - let spawned application children finish cleanly after Ctrl-C instead of surfacing Uvicorn's post-shutdown SIGINT re-raise as a `KeyboardInterrupt` traceback
 - scope `--verbose` DEBUG logging to Kyth so third-party watcher timeout diagnostics do not flood otherwise-idle development sessions
