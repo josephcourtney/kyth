@@ -3,8 +3,14 @@
 Run from this directory:
 
 ```console
-uv run --project ../../.. kyth app:app --manifest kyth-manifest.json --verbose
+uv run --project ../../.. kyth app:app \
+  --watch . \
+  --watch public \
+  --manifest kyth-manifest.json \
+  --verbose
 ```
+
+The second watch root is intentional: the application mounts `public/` at URL root, so it also gives Kyth an unambiguous direct-resource root for URLs such as `/site.css` while `--watch .` keeps source and generator changes under observation.
 
 Open `/` and `/notes/` in separate tabs. Rebuild outputs in another terminal with:
 
