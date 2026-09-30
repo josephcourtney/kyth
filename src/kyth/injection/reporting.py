@@ -59,32 +59,42 @@ def _post_render_record(control_url: str, token: str, record: RenderRecord) -> N
 
 def _render_body(record: RenderRecord, *, max_bytes: int = MAX_REPORT_BODY_BYTES) -> str:
     """Serialize provenance, truncating only precision when the HTTP budget is exceeded."""
-    payload = _render_payload(record)
-    body = _encode_payload(payload)
+    full_payload = _render_payload(record)
+    body = _encode_payload(full_payload)
     if len(body.encode()) <= max_bytes:
         return body
 
-    dependencies = list(payload["dependencies"])
-    data_dependencies = list(payload["data_dependencies"])
-    payload["complete"] = False
-    payload["dependencies"] = []
-    payload["data_dependencies"] = []
+    dependencies = [_source_payload(dependency) for dependency in record.dependencies]
+    data_dependencies = [
+        {
+            "identity": dependency.identity,
+            **_source_payload(dependency.source),
+        }
+        for dependency in record.data_dependencies
+    ]
+    selected_dependencies: list[dict[str, object]] = []
+    selected_data_dependencies: list[dict[str, object]] = []
+    payload: dict[str, object] = {
+        "render_id": record.render_id,
+        "generation": record.generation,
+        "complete": False,
+        "adapter": record.adapter,
+        "data_dependencies": selected_data_dependencies,
+        "dependencies": selected_dependencies,
+    }
     body = _encode_payload(payload)
 
-    # Preserve a balanced prefix of ordinary and data dependencies. A skipped
+    # Preserve a balanced subset of ordinary and data dependencies. A skipped
     # oversized item does not prevent later, smaller entries from fitting.
     for index in range(max(len(dependencies), len(data_dependencies))):
-        for key, values in (
-            ("dependencies", dependencies),
-            ("data_dependencies", data_dependencies),
-        ):
-            if index >= len(values):
+        candidates = (
+            (selected_dependencies, dependencies),
+            (selected_data_dependencies, data_dependencies),
+        )
+        for selected, available in candidates:
+            if index >= len(available):
                 continue
-            selected = payload[key]
-            if not isinstance(selected, list):
-                msg = f"internal provenance payload field {key!r} is not a list"
-                raise TypeError(msg)
-            selected.append(values[index])
+            selected.append(available[index])
             candidate = _encode_payload(payload)
             if len(candidate.encode()) <= max_bytes:
                 body = candidate
