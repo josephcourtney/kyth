@@ -99,13 +99,14 @@ def classify_path(
         return ChangeEffect.SERVER_RESTART
     if any(path.match(pattern) for pattern in active_policy.external_hmr_patterns):
         return ChangeEffect.EXTERNAL_HMR
+    if fallback_scoped:
+        return ChangeEffect.BROWSER_CHANGE
 
     # Kyth's correctness fallback is conservative: a watched file that is not
     # known to be server-only or externally HMR-owned may contribute to a
-    # rendered view even when its suffix is unfamiliar. Runtime provenance and
-    # fallback scopes can narrow the affected view set later, but missing
-    # provenance must never turn a potentially relevant edit into no action.
-    _ = fallback_scoped
+    # rendered view even when its suffix is unfamiliar. Runtime provenance can
+    # narrow the affected set later, but missing provenance must never turn a
+    # potentially relevant edit into no action.
     return ChangeEffect.BROWSER_CHANGE
 
 
