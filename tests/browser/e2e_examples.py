@@ -406,7 +406,15 @@ def test_jinja_field_workflow(tmp_path: Path, e2e_browser: _Browser) -> None:
 
 def test_generated_site_field_workflow(tmp_path: Path, e2e_browser: _Browser) -> None:
     root = _copy_example(tmp_path, "generated_site")
-    server = _start_cli(root, "--manifest", "kyth-manifest.json")
+    server = _start_cli(
+        root,
+        "--watch",
+        ".",
+        "--watch",
+        "public",
+        "--manifest",
+        "kyth-manifest.json",
+    )
     context = e2e_browser.new_context()
     try:
         home = context.new_page()
