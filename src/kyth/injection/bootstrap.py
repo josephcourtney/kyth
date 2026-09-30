@@ -24,7 +24,7 @@ class ClientBootstrap:
     headers_committed: bool = False
 
     def explicit_script(self) -> str:
-        """Render the client once while response headers can still be adjusted."""
+        """Render the client bootstrap once while response headers can still be adjusted."""
         if self.headers_committed:
             msg = "Kyth client_script() must be called before response headers are committed"
             raise RuntimeError(msg)
@@ -58,7 +58,7 @@ def capture_client_bootstrap(bootstrap: ClientBootstrap) -> Iterator[ClientBoots
 
 
 def client_script() -> str:
-    """Return the explicit Kyth client tag for the current managed request.
+    """Return explicit Kyth client bootstrap markup for the current managed request.
 
     Outside a Kyth-managed HTTP request this returns an empty string so optional
     development integration does not alter normal application output.
