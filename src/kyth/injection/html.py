@@ -99,11 +99,22 @@ def rewrite_headers(
 
 
 def augment_csp(value: bytes, *, control_origin: str, nonce: str) -> bytes:
-    """Permit only Kyth's injected script and control connection in an existing CSP."""
+    """Permit Kyth in every policy while preserving CSP duplicate semantics."""
     text = value.decode("latin-1")
-    directives = _parse_csp(text)
     nonce_source = f"'nonce-{nonce}'"
+    policies = [
+        _augment_csp_policy(_parse_csp(raw_policy), control_origin=control_origin, nonce_source=nonce_source)
+        for raw_policy in text.split(",")
+    ]
+    return ", ".join(_render_csp(policy) for policy in policies).encode("latin-1")
 
+
+def _augment_csp_policy(
+    directives: dict[str, list[str]],
+    *,
+    control_origin: str,
+    nonce_source: str,
+) -> dict[str, list[str]]:
     default_sources = directives.get("default-src")
     script_sources = directives.get("script-src")
     script_element_sources = directives.get("script-src-elem")
@@ -122,15 +133,18 @@ def augment_csp(value: bytes, *, control_origin: str, nonce: str) -> bytes:
     elif default_sources is not None:
         directives["connect-src"] = _merge_sources(default_sources, control_origin)
 
-    return _render_csp(directives).encode("latin-1")
+    return directives
 
 
 def _parse_csp(value: str) -> dict[str, list[str]]:
     directives: dict[str, list[str]] = {}
     for raw_directive in value.split(";"):
         parts = raw_directive.strip().split()
-        if parts:
-            directives[parts[0].lower()] = parts[1:]
+        if not parts:
+            continue
+        name = parts[0].lower()
+        if name not in directives:
+            directives[name] = parts[1:]
     return directives
 
 
