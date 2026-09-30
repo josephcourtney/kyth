@@ -142,7 +142,11 @@ class ChildProcess:
         """Update future HTML responses and wait until the child confirms the update."""
         process = self._require_process()
         readiness = self._require_readiness()
-        self._require_control().send(GenerationUpdate(generation))
+        try:
+            self._require_control().send(GenerationUpdate(generation))
+        except (BrokenPipeError, EOFError, OSError) as exc:
+            msg = "application child exited before generation update was sent"
+            raise RuntimeError(msg) from exc
 
         if not readiness.poll(timeout):
             if not process.is_alive():
