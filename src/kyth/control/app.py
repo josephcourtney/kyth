@@ -5,6 +5,7 @@ import ipaddress
 import json
 import logging
 import secrets
+import sys
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from queue import Empty
@@ -20,6 +21,7 @@ from kyth.model import BrowserResource, BrowserResourceKind, DataDependency, Ren
 from kyth.protocol import ControlEvent
 
 if TYPE_CHECKING:
+    import socket
     from collections.abc import Collection
 
 logger = logging.getLogger(__name__)
@@ -78,6 +80,16 @@ class _ControlHTTPServer(ThreadingHTTPServer):
 
     def service_actions(self) -> None:
         self.control_state.views.expire_inactive()
+
+    def handle_error(
+        self,
+        request: socket.socket | tuple[bytes, socket.socket],
+        client_address: tuple[str, int],
+    ) -> None:
+        """Discard expected browser disconnects; report unexpected exceptions."""
+        if isinstance(sys.exception(), (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
 
 
 class _ControlRequestHandler(BaseHTTPRequestHandler):

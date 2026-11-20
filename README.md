@@ -28,7 +28,39 @@ Basic usage:
 kyth package.module:app
 ```
 
+### Independent application environment
+
+Kyth's supervisor runs from its own installation. Its CLI normally launches the application
+under `.venv/bin/python` in the current directory, if that interpreter exists; otherwise
+it uses Kyth's own interpreter. A `src/` package layout is detected from the requested
+module. Neither Kyth nor Uvicorn must be added to the application's declared dependencies:
+the worker loads Kyth's ASGI runtime from the Kyth installation and uses Kyth's
+pure-Python server dependencies as fallbacks after the application's packages.
+
+For a project with a `src/` layout and a uv-managed environment:
+
+```console
+cd path/to/project
+uv sync
+kyth package.module:app
+```
+
+When the server depends on an optional dependency group, sync that group first.
+Override either discovery decision explicitly:
+
+```console
+kyth package.module:app --python .venv/bin/python --app-dir src
+```
+
+The application itself still runs under the selected project interpreter, so all
+application dependencies must be available there. Kyth does not modify the project's
+environment or `pyproject.toml`. Socket passing for independent workers requires macOS
+or Linux. Direct `SupervisorConfig` users who omit `python` retain the legacy
+multiprocessing worker; the CLI uses the external worker by default.
+
 Use repeated `--watch PATH` options to override the default current-directory watch root, repeated `--ignore PATH` options to add ignored paths, `--restart-on PATTERN` for additional process-loaded configuration, `--external-hmr-on PATTERN` for browser assets owned by another development server, and `--fallback-scope SOURCE_GLOB URL_GLOB` to narrow conservative reload for otherwise-uncertain source/view relationships. `--verbose` exposes the full change-decision chain. Use `--control-port PORT` only when a fixed loopback control port is required; otherwise Kyth chooses one automatically.
+
+Kyth ignores common generated development artifacts including `.cache/`, `.ruff_cache/`, `htmlcov/`, `.coverage*`, and uv's short-lived `.tmpXXXXXX` lockfile writes by default. Changes to `uv.lock` require an application restart; they do not install or synchronize project dependencies. Hidden application configuration such as `.env` is still watched. Other project-specific generated outputs can be excluded with `--ignore`.
 
 The browser control plane is intentionally loopback-only. Binding the application server itself to a non-loopback host does not make Kyth a remote-device development coordinator: the synchronized browser must run on the same machine as Kyth. This keeps the development control service outside the remotely reachable application surface.
 

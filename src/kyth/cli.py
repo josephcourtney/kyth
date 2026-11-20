@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
+import sys
 from itertools import starmap
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -20,6 +21,16 @@ def _parser() -> argparse.ArgumentParser:
         description="Run an ASGI application under the Kyth development supervisor.",
     )
     parser.add_argument("app", help="ASGI import target, for example package.module:app")
+    parser.add_argument(
+        "--python",
+        type=Path,
+        help="application Python executable (default: .venv/bin/python if present)",
+    )
+    parser.add_argument(
+        "--app-dir",
+        type=Path,
+        help="application import root (default: detected src/ layout or current directory)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="show detailed reload-decision diagnostics")
     parser.add_argument("--host", default="127.0.0.1", help="application host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="application port (default: 8000)")
@@ -90,12 +101,36 @@ def _configure_logging(*, verbose: bool) -> None:
     logging.getLogger("kyth").setLevel(logging.DEBUG if verbose else logging.INFO)
 
 
+def _resolve_python(explicit: Path | None, root: Path) -> Path:
+    if explicit is not None:
+        python = explicit.expanduser().absolute()
+        if not python.is_file():
+            msg = f"application interpreter does not exist: {python}"
+            raise ValueError(msg)
+        return python
+    project_python = root / ".venv" / "bin" / "python"
+    return project_python if project_python.is_file() else Path(sys.executable)
+
+
+def _resolve_app_dir(explicit: Path | None, root: Path, target: str) -> Path:
+    if explicit is not None:
+        return explicit.expanduser().resolve()
+    module = target.partition(":")[0].partition(".")[0]
+    src = root / "src"
+    if (src / module).is_dir() or (src / f"{module}.py").is_file():
+        return src
+    return root
+
+
 def cli(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     _configure_logging(verbose=args.verbose)
-    watch_roots = tuple(args.watch_roots) if args.watch_roots else (Path.cwd(),)
+    project_root = Path.cwd()
+    watch_roots = tuple(args.watch_roots) if args.watch_roots else (project_root,)
     config = SupervisorConfig(
         app_target=args.app,
+        python=_resolve_python(args.python, project_root),
+        app_dir=_resolve_app_dir(args.app_dir, project_root, args.app),
         host=args.host,
         port=args.port,
         startup_timeout=args.startup_timeout,

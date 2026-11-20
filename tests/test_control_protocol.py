@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import http.client
 import json
+import socket
 from http import HTTPStatus
+from http.server import ThreadingHTTPServer
+from unittest.mock import patch
 from urllib.parse import quote
 
 import pytest
@@ -323,3 +326,41 @@ def test_data_update_and_server_error_events_have_structured_payloads() -> None:
     assert data.data == {"identities": ["inventory", "prices"]}
     assert error.kind.value == "server-error"
     assert error.data == {"message": "startup failed"}
+
+
+def _raise_control_error(error: Exception) -> None:
+    """Raise in the handler's exception context, as socketserver does."""
+    raise error
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+@pytest.mark.parametrize("disconnect", [ConnectionResetError, ConnectionAbortedError, BrokenPipeError])
+def test_control_server_suppresses_expected_peer_disconnects(disconnect: type[OSError]) -> None:
+    with (
+        ControlService() as service,
+        patch.object(ThreadingHTTPServer, "handle_error") as parent,
+        socket.socket() as request,
+    ):
+        try:
+            _raise_control_error(disconnect())
+        except disconnect:
+            service._server.handle_error(request, ("127.0.0.1", 9000))
+
+        parent.assert_not_called()
+
+
+@pytest.mark.integration
+@pytest.mark.medium
+def test_control_server_still_reports_unexpected_request_handler_failures() -> None:
+    with (
+        ControlService() as service,
+        patch.object(ThreadingHTTPServer, "handle_error") as parent,
+        socket.socket() as request,
+    ):
+        try:
+            _raise_control_error(RuntimeError())
+        except RuntimeError:
+            service._server.handle_error(request, ("127.0.0.1", 9000))
+
+        parent.assert_called_once_with(request, ("127.0.0.1", 9000))

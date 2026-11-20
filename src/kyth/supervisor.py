@@ -10,6 +10,7 @@ from kyth.control import ControlService
 from kyth.fallback import FallbackScopeIndex, FallbackScopeResolution, FallbackScopeRule, scope_view_mapping
 from kyth.invalidation import BrowserAction, BrowserActionKind, BrowserUpdateDecision, decide_browser_updates
 from kyth.model import ChildState, ChildStatus, DevelopmentState, FileBatch, FileOperation
+from kyth.process.external import ExternalChildProcess
 from kyth.process.manager import ChildProcess
 from kyth.process.socket import DEFAULT_BACKLOG, bind_listening_socket
 from kyth.protocol import ControlEvent
@@ -51,6 +52,8 @@ class SupervisorConfig:
     restart_patterns: tuple[str, ...] = ()
     external_hmr_patterns: tuple[str, ...] = ()
     fallback_scopes: tuple[FallbackScopeRule, ...] = ()
+    python: Path | None = None
+    app_dir: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,7 +244,12 @@ class Supervisor:
         control = self._require_control()
         generation = self.state.generation + 1
         control_host, control_port = control.address
-        child = ChildProcess(context=self._process_context)
+        python = self.config.python
+        child = (
+            ExternalChildProcess(python=python, app_dir=self.config.app_dir or Path.cwd())
+            if python is not None
+            else ChildProcess(context=self._process_context)
+        )
         child.start(
             self.config.app_target,
             listening_socket,

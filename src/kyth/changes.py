@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from kyth.model import FileBatch
 
 PYTHON_SUFFIXES = frozenset({".py", ".pyi", ".pyx"})
-RESTART_FILENAMES = frozenset({"pyproject.toml"})
+RESTART_FILENAMES = frozenset({"pyproject.toml", "uv.lock"})
 
 
 @dataclass(frozen=True, slots=True)

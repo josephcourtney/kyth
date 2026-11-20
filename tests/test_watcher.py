@@ -150,3 +150,77 @@ def test_batch_deduplicator_keeps_atomic_replacement_with_same_mtime_and_size(tm
     assert replaced_stat.st_size == original_stat.st_size
     assert replaced_stat.st_mtime_ns == original_stat.st_mtime_ns
     assert deduplicator.filter(batch) == batch
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/project/.cache/ruff/0.17.6/15809508916137513050",
+        "/project/.cache/ruff/0.17.6/.tmpRkUnTl",
+        "/project/.ruff_cache/0.17.6/state",
+        "/project/htmlcov/index.html",
+        "/project/.coverage",
+        "/project/.coverage.LT-0801530.pid56806.Xm7ISXlx",
+        "/project/.coverage.LT-0801530.pid56806.Xm7ISXlx.HtOJc1OWyHah",
+        "/project/subproject/.coverage",
+    ],
+)
+def test_watcher_ignores_generated_coverage_and_cache_artifacts(path: str) -> None:
+    watcher = FileWatcher(WatcherConfig(roots=(Path("/project"),)))
+
+    assert not watcher.accepts(Change.added, path)
+    assert not watcher.accepts(Change.modified, path)
+    assert not watcher.accepts(Change.deleted, path)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/project/.env",
+        "/project/.env.development",
+        "/project/.github/workflows/test.yaml",
+        "/project/src/app.py",
+        "/project/templates/index.html",
+        "/project/data/coverage.json",
+        "/project/src/coverage_helpers.py",
+    ],
+)
+def test_watcher_keeps_relevant_sources_and_hidden_runtime_configuration(path: str) -> None:
+    watcher = FileWatcher(WatcherConfig(roots=(Path("/project"),)))
+
+    assert watcher.accepts(Change.modified, path)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/project/.tmpTC38PS",
+        "/project/.tmpyod2H0",
+        "/project/.tmpMUEUv1",
+        "/project/nested/.tmpyaWOqh",
+    ],
+)
+def test_watcher_ignores_uv_atomic_lockfile_temporary_names(path: str) -> None:
+    watcher = FileWatcher(WatcherConfig(roots=(Path("/project"),)))
+
+    assert not watcher.accepts(Change.added, path)
+    assert not watcher.accepts(Change.modified, path)
+    assert not watcher.accepts(Change.deleted, path)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.parametrize(
+    "path",
+    ["/project/.env", "/project/.tmp", "/project/.tmp-data.json", "/project/.tmp12345", "/project/.tmp1234567"],
+)
+def test_watcher_does_not_ignore_unrelated_hidden_paths(path: str) -> None:
+    watcher = FileWatcher(WatcherConfig(roots=(Path("/project"),)))
+
+    assert watcher.accepts(Change.modified, path)

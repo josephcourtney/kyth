@@ -17,12 +17,20 @@ Items should be categorized under these headings:
 
 ## Unreleased
 
+### Added
+
+- run Kyth's development supervisor independently from project virtual environments, automatically selecting the project's `.venv/bin/python` and `src/` import layout when present
+- accept `--python` and `--app-dir` overrides for application workers, without adding Kyth to the application's declared dependencies or environment
+
 ### Changed
 
 - treat every watched path that is not a restart input or externally owned HMR input as conservatively browser-relevant, so missing runtime provenance reduces reload precision instead of suppressing invalidation
 
 ### Fixed
 
+- classify `uv.lock` updates as application restarts and ignore uv's atomic `.tmpXXXXXX` writes, avoiding spurious browser-only reloads during dependency synchronization
+- suppress routine browser disconnect exceptions in the control-plane HTTP server while retaining unexpected exception reporting
+- ignore ordinary coverage databases and development-tool cache outputs in filesystem watches, preventing repeated browser reloads caused by `.coverage*` and `.cache/ruff/`
 - reset tab-scoped Kyth generation, view, registration, and preserved-state data when the supervisor control session changes, preventing stale generations from surviving a Kyth restart
 - recover from broken child-control pipes during generation updates by routing them through the supervisor's normal restart path
 - preserve CSP first-duplicate-wins semantics and augment each policy in a CSP policy list independently

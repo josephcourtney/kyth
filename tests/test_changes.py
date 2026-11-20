@@ -128,3 +128,16 @@ def test_restart_and_external_hmr_precede_fallback_scope_classification() -> Non
     effects = {item.path: item.effect for item in changes.paths}
     assert effects[python] is ChangeEffect.SERVER_RESTART
     assert effects[frontend] is ChangeEffect.EXTERNAL_HMR
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_uv_lockfile_change_requires_application_restart() -> None:
+    path = Path("/project/uv.lock")
+    batch = FileBatch.from_events([FileEvent(path, FileOperation.MODIFIED)])
+
+    changes = classify_batch(batch)
+
+    assert changes.requires_restart
+    assert changes.restart_paths == (path,)
+    assert changes.browser_paths == ()
