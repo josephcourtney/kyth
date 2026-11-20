@@ -60,7 +60,7 @@ multiprocessing worker; the CLI uses the external worker by default.
 
 Use repeated `--watch PATH` options to override the default current-directory watch root, repeated `--ignore PATH` options to add ignored paths, `--restart-on PATTERN` for additional process-loaded configuration, `--external-hmr-on PATTERN` for browser assets owned by another development server, and `--fallback-scope SOURCE_GLOB URL_GLOB` to narrow conservative reload for otherwise-uncertain source/view relationships. `--verbose` exposes the full change-decision chain. Use `--control-port PORT` only when a fixed loopback control port is required; otherwise Kyth chooses one automatically.
 
-Kyth ignores common generated development artifacts including `.cache/`, `.ruff_cache/`, `htmlcov/`, and `.coverage*` by default. Hidden application configuration such as `.env` is still watched. Other project-specific generated outputs can be excluded with `--ignore`.
+Kyth ignores common generated development artifacts including `.cache/`, `.ruff_cache/`, `htmlcov/`, `.coverage*`, and uv's short-lived `.tmpXXXXXX` lockfile writes by default. Changes to `uv.lock` require an application restart; they do not install or synchronize project dependencies. Hidden application configuration such as `.env` is still watched. Other project-specific generated outputs can be excluded with `--ignore`.
 
 The browser control plane is intentionally loopback-only. Binding the application server itself to a non-loopback host does not make Kyth a remote-device development coordinator: the synchronized browser must run on the same machine as Kyth. This keeps the development control service outside the remotely reachable application surface.
 

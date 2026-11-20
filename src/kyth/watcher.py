@@ -17,6 +17,7 @@ DEFAULT_RUST_TIMEOUT_MS = 500
 # Development-tool outputs are not source dependencies. Keep this list narrow:
 # hidden runtime configuration such as .env remains restart-worthy.
 _GENERATED_DIRECTORIES = frozenset({".cache", ".ruff_cache", "htmlcov"})
+_UV_TEMPORARY_FILENAME_LENGTH = 10
 
 
 class _DevelopmentFilter(DefaultFilter):
@@ -30,7 +31,7 @@ class _DevelopmentFilter(DefaultFilter):
         if name == ".coverage" or name.startswith(".coverage."):
             return False
         # uv writes atomic lockfiles through randomly named .tmpXXXXXX files.
-        if name.startswith(".tmp") and len(name) == 10 and name[4:].isascii() and name[4:].isalnum():
+        if name.startswith(".tmp") and len(name) == _UV_TEMPORARY_FILENAME_LENGTH and name[4:].isascii() and name[4:].isalnum():
             return False
         return super().__call__(change, path)
 
