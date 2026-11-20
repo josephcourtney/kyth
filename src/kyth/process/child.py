@@ -97,14 +97,18 @@ def run_child(
             if not sys.path or sys.path[0] != import_root:
                 sys.path.insert(0, import_root)
             importlib.invalidate_caches()
-            application = HTMLInjectionMiddleware(
-                _load_application(app_target),
-                InjectionConfig(
-                    control_url=control_url,
-                    token=control_token,
-                    generation=generation,
-                ),
-            )
+            try:
+                application = HTMLInjectionMiddleware(
+                    _load_application(app_target),
+                    InjectionConfig(
+                        control_url=control_url,
+                        token=control_token,
+                        generation=generation,
+                    ),
+                )
+            except Exception as exc:
+                readiness.send(StartupEvent.failed(f"{type(exc).__name__}: {exc}"))
+                raise
             config = uvicorn.Config(application, reload=False, workers=1, interface="asgi3")
             server = _ReadinessServer(config, readiness)
             control_thread = threading.Thread(
