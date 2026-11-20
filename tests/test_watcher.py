@@ -193,3 +193,34 @@ def test_watcher_keeps_relevant_sources_and_hidden_runtime_configuration(path: s
     watcher = FileWatcher(WatcherConfig(roots=(Path("/project"),)))
 
     assert watcher.accepts(Change.modified, path)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/project/.tmpTC38PS",
+        "/project/.tmpyod2H0",
+        "/project/.tmpMUEUv1",
+        "/project/nested/.tmpyaWOqh",
+    ],
+)
+def test_watcher_ignores_uv_atomic_lockfile_temporary_names(path: str) -> None:
+    watcher = FileWatcher(WatcherConfig(roots=(Path("/project"),)))
+
+    assert not watcher.accepts(Change.added, path)
+    assert not watcher.accepts(Change.modified, path)
+    assert not watcher.accepts(Change.deleted, path)
+
+
+@pytest.mark.unit
+@pytest.mark.small
+@pytest.mark.parametrize(
+    "path",
+    ["/project/.env", "/project/.tmp", "/project/.tmp-data.json", "/project/.tmp12345", "/project/.tmp1234567"],
+)
+def test_watcher_does_not_ignore_unrelated_hidden_paths(path: str) -> None:
+    watcher = FileWatcher(WatcherConfig(roots=(Path("/project"),)))
+
+    assert watcher.accepts(Change.modified, path)

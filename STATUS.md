@@ -22,8 +22,8 @@ Kyth 1.0.1 is the stable V1 patch baseline. The active branch supports independe
 
 ## Next priorities
 
-- rerun `just check` and `just browser-test` on the latest branch head; the prior browser run passed 90 tests, while the prior canonical gate stopped on two formatting violations (subsequently corrected);
-- verify macOS/Linux cross-interpreter worker behavior and Haint field-session stability after generated-artifact and disconnected-client filtering;
+- rerun `just check` and `just browser-test` on the latest branch head; the prior browser run passed 90 tests, while the latest canonical gate stopped on another external-worker formatting violation (fixed in this commit);
+- verify macOS/Linux cross-interpreter worker behavior and Haint field-session stability after generated-artifact, temporary lockfile, and disconnected-client filtering;
 - exercise the `examples/e2e/` projects through genuine iterative editing sessions and turn unexplained behavior into concrete issues;
 - keep the canonical, browser, complexity, and supported lifecycle gates green;
 - add WebKit, diagnostic history, a standalone JavaScript source/lint path, or a broader plugin framework only in response to concrete product or maintenance needs.

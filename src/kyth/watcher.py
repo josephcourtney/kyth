@@ -29,6 +29,9 @@ class _DevelopmentFilter(DefaultFilter):
         name = Path(path).name
         if name == ".coverage" or name.startswith(".coverage."):
             return False
+        # uv writes atomic lockfiles through randomly named .tmpXXXXXX files.
+        if name.startswith(".tmp") and len(name) == 10 and name[4:].isascii() and name[4:].isalnum():
+            return False
         return super().__call__(change, path)
 
 

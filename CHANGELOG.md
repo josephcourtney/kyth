@@ -28,6 +28,7 @@ Items should be categorized under these headings:
 
 ### Fixed
 
+- classify `uv.lock` updates as application restarts and ignore uv's atomic `.tmpXXXXXX` writes, avoiding spurious browser-only reloads during dependency synchronization
 - suppress routine browser disconnect exceptions in the control-plane HTTP server while retaining unexpected exception reporting
 - ignore ordinary coverage databases and development-tool cache outputs in filesystem watches, preventing repeated browser reloads caused by `.coverage*` and `.cache/ruff/`
 - reset tab-scoped Kyth generation, view, registration, and preserved-state data when the supervisor control session changes, preventing stale generations from surviving a Kyth restart

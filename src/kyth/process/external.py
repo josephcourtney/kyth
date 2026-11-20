@@ -127,19 +127,18 @@ class ExternalChildProcess(ChildProcess):
                 close_fds=True,
             )
             channel = Connection(parent.detach())
-            channel.send(
-                {
-                    "app_target": app_target,
-                    "import_root": str(self.app_dir),
-                    "socket_family": int(listening_socket.family),
-                    "socket_type": int(listening_socket.type),
-                    "socket_proto": listening_socket.proto,
-                    "control_url": control_url,
-                    "control_token": control_token,
-                    "generation": generation,
-                    "fallback_paths": _runtime_fallback_paths(),
-                }
-            )
+            settings = {
+                "app_target": app_target,
+                "import_root": str(self.app_dir),
+                "socket_family": int(listening_socket.family),
+                "socket_type": int(listening_socket.type),
+                "socket_proto": listening_socket.proto,
+                "control_url": control_url,
+                "control_token": control_token,
+                "generation": generation,
+                "fallback_paths": _runtime_fallback_paths(),
+            }
+            channel.send(settings)
         except Exception:  # noqa: BLE001 - release resources after any subprocess-launch error
             if channel is not None:
                 channel.close()
