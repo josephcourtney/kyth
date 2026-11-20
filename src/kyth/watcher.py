@@ -31,7 +31,13 @@ class _DevelopmentFilter(DefaultFilter):
         if name == ".coverage" or name.startswith(".coverage."):
             return False
         # uv writes atomic lockfiles through randomly named .tmpXXXXXX files.
-        if name.startswith(".tmp") and len(name) == _UV_TEMPORARY_FILENAME_LENGTH and name[4:].isascii() and name[4:].isalnum():
+        is_uv_temporary = (
+            name.startswith(".tmp")
+            and len(name) == _UV_TEMPORARY_FILENAME_LENGTH
+            and name[4:].isascii()
+            and name[4:].isalnum()
+        )
+        if is_uv_temporary:
             return False
         return super().__call__(change, path)
 

@@ -106,7 +106,7 @@ def run_child(
                         generation=generation,
                     ),
                 )
-            except Exception as exc:  # noqa: BLE001 - report arbitrary application import failures
+            except Exception as exc:
                 readiness.send(StartupEvent.failed(f"{type(exc).__name__}: {exc}"))
                 raise
             config = uvicorn.Config(application, reload=False, workers=1, interface="asgi3")

@@ -4,7 +4,7 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-Kyth 1.0.1 is the stable V1 patch baseline. The active branch supports independent project interpreters without installing Kyth into client environments. Haint field testing confirms startup, API requests, and readiness-gated restart; the latest cache-filter and control-disconnect fixes still require full validation.
+Kyth 1.0.1 is the stable V1 patch baseline. The active branch supports independent project interpreters without installing Kyth into client environments. Haint field testing confirms startup, API requests, and readiness-gated restart; the latest fix set still requires full validation. The first complete suite run found two macOS virtualenv fixture failures, now addressed by symlinking the interpreter; source lint and type errors were also corrected.
 
 ## Current state
 
@@ -22,7 +22,7 @@ Kyth 1.0.1 is the stable V1 patch baseline. The active branch supports independe
 
 ## Next priorities
 
-- rerun `just check` and `just browser-test` on the latest branch head; the prior browser run passed 90 tests, while the latest canonical gate stopped on another external-worker formatting violation (fixed in this commit);
+- rerun `just check` and `just browser-test` on the latest branch head; the prior browser run passed 90 tests and the first full source suite had 248 passes and two fixture failures;
 - verify macOS/Linux cross-interpreter worker behavior and Haint field-session stability after generated-artifact, temporary lockfile, and disconnected-client filtering;
 - exercise the `examples/e2e/` projects through genuine iterative editing sessions and turn unexplained behavior into concrete issues;
 - keep the canonical, browser, complexity, and supported lifecycle gates green;

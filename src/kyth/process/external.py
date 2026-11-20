@@ -169,7 +169,7 @@ class ExternalChildProcess(ChildProcess):
                     generation=generation,
                 )
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             if channel is not None:
                 channel.close()
             if process is not None:
