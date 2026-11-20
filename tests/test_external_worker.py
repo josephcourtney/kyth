@@ -5,11 +5,11 @@ The isolated virtual environment deliberately does not install Kyth or Uvicorn.
 
 from __future__ import annotations
 
+import http.client
 import subprocess
 import sys
 import venv
 from pathlib import Path
-from urllib.request import urlopen
 
 import pytest
 
@@ -58,10 +58,14 @@ async def app(scope, receive, send):
 
 
 def _get_html(supervisor: Supervisor) -> str:
-    address = supervisor.address
-    with urlopen(f"http://{address[0]}:{address[1]}/", timeout=5) as response:
+    connection = http.client.HTTPConnection(*supervisor.address, timeout=5)
+    try:
+        connection.request("GET", "/")
+        response = connection.getresponse()
         assert response.status == 200
         return response.read().decode()
+    finally:
+        connection.close()
 
 
 @pytest.mark.system

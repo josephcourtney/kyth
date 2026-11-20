@@ -131,7 +131,7 @@ class ExternalChildProcess(ChildProcess):
                 "generation": generation,
                 "fallback_paths": _runtime_fallback_paths(),
             })
-        except Exception:
+        except Exception:  # noqa: BLE001 - release resources after any subprocess-launch error
             if channel is not None:
                 channel.close()
             if process is not None:

@@ -56,7 +56,7 @@ def main() -> int:
             channel,
             channel,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - report arbitrary worker startup failures
         try:
             channel.send(StartupEvent.failed(f"{type(exc).__name__}: {exc}"))
         except (BrokenPipeError, EOFError, OSError):
