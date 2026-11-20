@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import socket
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer
 from unittest.mock import patch
@@ -331,11 +332,15 @@ def test_data_update_and_server_error_events_have_structured_payloads() -> None:
 @pytest.mark.medium
 @pytest.mark.parametrize("disconnect", [ConnectionResetError, ConnectionAbortedError, BrokenPipeError])
 def test_control_server_suppresses_expected_peer_disconnects(disconnect: type[OSError]) -> None:
-    with ControlService() as service, patch.object(ThreadingHTTPServer, "handle_error") as parent:
+    with (
+        ControlService() as service,
+        patch.object(ThreadingHTTPServer, "handle_error") as parent,
+        socket.socket() as request,
+    ):
         try:
             raise disconnect("client closed connection")
         except disconnect:
-            service._server.handle_error(None, ("127.0.0.1", 9000))
+            service._server.handle_error(request, ("127.0.0.1", 9000))
 
         parent.assert_not_called()
 
@@ -343,10 +348,14 @@ def test_control_server_suppresses_expected_peer_disconnects(disconnect: type[OS
 @pytest.mark.integration
 @pytest.mark.medium
 def test_control_server_still_reports_unexpected_request_handler_failures() -> None:
-    with ControlService() as service, patch.object(ThreadingHTTPServer, "handle_error") as parent:
+    with (
+        ControlService() as service,
+        patch.object(ThreadingHTTPServer, "handle_error") as parent,
+        socket.socket() as request,
+    ):
         try:
             raise RuntimeError("unexpected protocol failure")
         except RuntimeError:
-            service._server.handle_error(None, ("127.0.0.1", 9000))
+            service._server.handle_error(request, ("127.0.0.1", 9000))
 
-        parent.assert_called_once_with(None, ("127.0.0.1", 9000))
+        parent.assert_called_once_with(request, ("127.0.0.1", 9000))

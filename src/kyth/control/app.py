@@ -21,6 +21,7 @@ from kyth.model import BrowserResource, BrowserResourceKind, DataDependency, Ren
 from kyth.protocol import ControlEvent
 
 if TYPE_CHECKING:
+    import socket
     from collections.abc import Collection
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class _ControlHTTPServer(ThreadingHTTPServer):
     def service_actions(self) -> None:
         self.control_state.views.expire_inactive()
 
-    def handle_error(self, request: object, client_address: tuple[str, int]) -> None:
+    def handle_error(self, request: socket.socket, client_address: tuple[str, int]) -> None:
         """Discard expected browser disconnects; report unexpected exceptions."""
         if isinstance(sys.exception(), (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)):
             return
