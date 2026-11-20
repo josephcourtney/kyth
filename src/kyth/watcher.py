@@ -14,6 +14,23 @@ DEFAULT_DEBOUNCE_MS = 300
 DEFAULT_STEP_MS = 50
 DEFAULT_RUST_TIMEOUT_MS = 500
 
+# Development-tool outputs are not source dependencies. Keep this list narrow:
+# hidden runtime configuration such as .env remains restart-worthy.
+_GENERATED_DIRECTORIES = frozenset({".cache", ".ruff_cache", "htmlcov"})
+
+
+class _DevelopmentFilter(DefaultFilter):
+    """Ignore ubiquitous generated artifacts without suppressing real dotfiles."""
+
+    def __call__(self, change: Change, path: str) -> bool:
+        parts = Path(path).parts
+        if _GENERATED_DIRECTORIES.intersection(parts):
+            return False
+        name = Path(path).name
+        if name == ".coverage" or name.startswith(".coverage."):
+            return False
+        return super().__call__(change, path)
+
 
 @dataclass(frozen=True, slots=True)
 class ObservedPathState:
@@ -91,7 +108,7 @@ class FileWatcher:
             debounce_ms=config.debounce_ms,
             step_ms=config.step_ms,
         )
-        self._filter = DefaultFilter(ignore_paths=self.config.ignored_paths)
+        self._filter = _DevelopmentFilter(ignore_paths=self.config.ignored_paths)
         self._queue: Queue[FileBatch] = Queue()
         self._stop = Event()
         self._thread: Thread | None = None
