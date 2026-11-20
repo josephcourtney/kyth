@@ -24,7 +24,7 @@ def _project(tmp_path: Path) -> tuple[Path, Path]:
     package = src / "sample_app"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
-    venv.EnvBuilder(with_pip=False).create(tmp_path / ".venv")
+    venv.EnvBuilder(with_pip=False, symlinks=True).create(tmp_path / ".venv")
     python = tmp_path / ".venv" / "bin" / "python"
     subprocess.run(
         [str(python), "-I", "-c", "import importlib.util; assert importlib.util.find_spec('kyth') is None"],

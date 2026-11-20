@@ -81,7 +81,11 @@ class _ControlHTTPServer(ThreadingHTTPServer):
     def service_actions(self) -> None:
         self.control_state.views.expire_inactive()
 
-    def handle_error(self, request: socket.socket, client_address: tuple[str, int]) -> None:
+    def handle_error(
+        self,
+        request: socket.socket | tuple[bytes, socket.socket],
+        client_address: tuple[str, int],
+    ) -> None:
         """Discard expected browser disconnects; report unexpected exceptions."""
         if isinstance(sys.exception(), (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)):
             return

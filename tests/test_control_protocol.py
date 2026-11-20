@@ -328,6 +328,12 @@ def test_data_update_and_server_error_events_have_structured_payloads() -> None:
     assert error.data == {"message": "startup failed"}
 
 
+
+def _raise_control_error(error: Exception) -> None:
+    """Raise in the handler's exception context, as socketserver does."""
+    raise error
+
+
 @pytest.mark.integration
 @pytest.mark.medium
 @pytest.mark.parametrize("disconnect", [ConnectionResetError, ConnectionAbortedError, BrokenPipeError])
@@ -338,7 +344,7 @@ def test_control_server_suppresses_expected_peer_disconnects(disconnect: type[OS
         socket.socket() as request,
     ):
         try:
-            raise disconnect("client closed connection")
+            _raise_control_error(disconnect())
         except disconnect:
             service._server.handle_error(request, ("127.0.0.1", 9000))
 
@@ -354,7 +360,7 @@ def test_control_server_still_reports_unexpected_request_handler_failures() -> N
         socket.socket() as request,
     ):
         try:
-            raise RuntimeError("unexpected protocol failure")
+            _raise_control_error(RuntimeError())
         except RuntimeError:
             service._server.handle_error(request, ("127.0.0.1", 9000))
 

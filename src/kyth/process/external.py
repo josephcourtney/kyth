@@ -10,7 +10,7 @@ import contextlib
 import importlib.util
 import os
 import socket
-import subprocess  # noqa: S404 - Kyth is a subprocess supervisor
+import subprocess  # noqa: S404
 import tempfile
 from multiprocessing.connection import Connection
 from pathlib import Path
@@ -72,6 +72,60 @@ def _runtime_fallback_paths() -> tuple[str, ...]:
     return tuple(roots)
 
 
+
+def _spawn_worker(
+    python: Path,
+    bootstrap: tempfile.TemporaryDirectory[str],
+    listening_socket: socket.socket,
+    child: socket.socket,
+) -> subprocess.Popen[bytes]:
+    """Expose only Kyth's package to the project interpreter and launch it."""
+    (Path(bootstrap.name) / "kyth").symlink_to(
+        Path(__file__).absolute().parents[1],
+        target_is_directory=True,
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(part for part in (bootstrap.name, env.get("PYTHONPATH", "")) if part)
+    args = [
+        str(python),
+        "-m",
+        "kyth.process.worker",
+        str(listening_socket.fileno()),
+        str(child.fileno()),
+    ]
+    # The command is constructed internally; no shell or user-provided arguments.
+    return subprocess.Popen(  # noqa: S603
+        args,
+        cwd=Path.cwd(),
+        env=env,
+        pass_fds=(listening_socket.fileno(), child.fileno()),
+        close_fds=True,
+    )
+
+
+def _worker_settings(
+    app_target: str,
+    import_root: Path,
+    listening_socket: socket.socket,
+    *,
+    control_url: str,
+    control_token: str,
+    generation: int,
+) -> dict[str, object]:
+    """Return the child bootstrap payload without importing the application."""
+    return {
+        "app_target": app_target,
+        "import_root": str(import_root),
+        "socket_family": int(listening_socket.family),
+        "socket_type": int(listening_socket.type),
+        "socket_proto": listening_socket.proto,
+        "control_url": control_url,
+        "control_token": control_token,
+        "generation": generation,
+        "fallback_paths": _runtime_fallback_paths(),
+    }
+
+
 class ExternalChildProcess(ChildProcess):
     """Start the existing ASGI worker with an independently selected Python."""
 
@@ -104,42 +158,19 @@ class ExternalChildProcess(ChildProcess):
         channel: Connection | None = None
         process: subprocess.Popen[bytes] | None = None
         try:
-            # Expose only the Kyth package, not the supervisor's site-packages.
-            # Otherwise its dependencies could shadow the project environment.
-            (Path(bootstrap.name) / "kyth").symlink_to(
-                Path(__file__).absolute().parents[1],
-                target_is_directory=True,
-            )
-            env = os.environ.copy()
-            env["PYTHONPATH"] = os.pathsep.join(part for part in (bootstrap.name, env.get("PYTHONPATH", "")) if part)
-            args = [
-                str(self.python),
-                "-m",
-                "kyth.process.worker",
-                str(listening_socket.fileno()),
-                str(child.fileno()),
-            ]
-            process = subprocess.Popen(  # noqa: S603 - argv list, no shell
-                args,
-                cwd=Path.cwd(),
-                env=env,
-                pass_fds=(listening_socket.fileno(), child.fileno()),
-                close_fds=True,
-            )
+            process = _spawn_worker(self.python, bootstrap, listening_socket, child)
             channel = Connection(parent.detach())
-            settings = {
-                "app_target": app_target,
-                "import_root": str(self.app_dir),
-                "socket_family": int(listening_socket.family),
-                "socket_type": int(listening_socket.type),
-                "socket_proto": listening_socket.proto,
-                "control_url": control_url,
-                "control_token": control_token,
-                "generation": generation,
-                "fallback_paths": _runtime_fallback_paths(),
-            }
-            channel.send(settings)
-        except Exception:  # noqa: BLE001 - release resources after any subprocess-launch error
+            channel.send(
+                _worker_settings(
+                    app_target,
+                    self.app_dir,
+                    listening_socket,
+                    control_url=control_url,
+                    control_token=control_token,
+                    generation=generation,
+                )
+            )
+        except Exception:  # noqa: BLE001
             if channel is not None:
                 channel.close()
             if process is not None:
