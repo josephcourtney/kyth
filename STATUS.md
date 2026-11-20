@@ -4,7 +4,7 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-Kyth 1.0.1 is the current stable V1 patch baseline. Post-release hardening and the bounded coverage audit are complete; the active focus is field testing against structurally different applications.
+Kyth 1.0.1 is the current stable V1 patch baseline. The active branch adds independently selected application interpreters to support projects that do not install Kyth. The change is not yet qualified by the canonical test gates.
 
 ## Current state
 
@@ -22,6 +22,7 @@ Kyth 1.0.1 is the current stable V1 patch baseline. Post-release hardening and t
 
 ## Next priorities
 
+- run `just check`, `just browser-test`, and cross-interpreter macOS/Linux smoke tests for the external worker, including a real Haint `.venv` with the `server` dependency group;
 - exercise the `examples/e2e/` projects through genuine iterative editing sessions and turn unexplained behavior into concrete issues;
 - keep the canonical, browser, complexity, and supported lifecycle gates green;
 - add WebKit, diagnostic history, a standalone JavaScript source/lint path, or a broader plugin framework only in response to concrete product or maintenance needs.

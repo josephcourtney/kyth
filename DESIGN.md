@@ -53,6 +53,8 @@ The supervisor owns:
 
 The application child owns only application execution. It receives the already-bound application socket, imports the configured ASGI application, runs normal ASGI lifespan startup and shutdown, and reports readiness to the supervisor.
 
+The supervisor and application may use different Python interpreters and dependency environments. In that case the supervisor launches an external worker under the application interpreter and makes the small Kyth child-side runtime importable without installing Kyth into the application project. Application packages take precedence over Kyth-provided fallback runtime dependencies. Cross-process readiness, generation updates, and shutdown must retain the same lifecycle semantics as the original multiprocessing worker.
+
 The browser receives a small development client by transparent HTML-response injection where possible. That client maintains a control connection to the supervisor and applies typed update events.
 
 The child process must not independently watch files, bind the public application port, or own the browser control plane.

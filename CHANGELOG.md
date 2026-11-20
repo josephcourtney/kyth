@@ -17,6 +17,11 @@ Items should be categorized under these headings:
 
 ## Unreleased
 
+### Added
+
+- run Kyth's development supervisor independently from project virtual environments, automatically selecting the project's `.venv/bin/python` and `src/` import layout when present
+- accept `--python` and `--app-dir` overrides for application workers, without adding Kyth to the application's declared dependencies or environment
+
 ### Changed
 
 - treat every watched path that is not a restart input or externally owned HMR input as conservatively browser-relevant, so missing runtime provenance reduces reload precision instead of suppressing invalidation
