@@ -35,8 +35,6 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class SupervisorConfig:
     app_target: str
-    python: Path | None = None
-    app_dir: Path | None = None
     host: str = "127.0.0.1"
     port: int = 8000
     backlog: int = DEFAULT_BACKLOG
@@ -54,6 +52,8 @@ class SupervisorConfig:
     restart_patterns: tuple[str, ...] = ()
     external_hmr_patterns: tuple[str, ...] = ()
     fallback_scopes: tuple[FallbackScopeRule, ...] = ()
+    python: Path | None = None
+    app_dir: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
