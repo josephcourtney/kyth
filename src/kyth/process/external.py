@@ -11,6 +11,7 @@ import os
 import socket
 import subprocess  # noqa: S404 - Kyth is a subprocess supervisor
 import sys
+import tempfile
 from multiprocessing.connection import Connection
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -80,6 +81,7 @@ class ExternalChildProcess(ChildProcess):
         super().__init__()
         self.python = python
         self.app_dir = app_dir
+        self._bootstrap: tempfile.TemporaryDirectory[str] | None = None
 
     def start(
         self,
@@ -95,15 +97,19 @@ class ExternalChildProcess(ChildProcess):
             raise RuntimeError(msg)
 
         parent, child = socket.socketpair()
+        bootstrap = tempfile.TemporaryDirectory(prefix="kyth-worker-")
         channel: Connection | None = None
         process: subprocess.Popen[bytes] | None = None
         try:
-            # This is the package root, whether Kyth is installed as a wheel
-            # or imported directly from a checkout's src/ directory.
-            package_root = Path(__file__).absolute().parents[2]
+            # Expose only the Kyth package, not the supervisor's site-packages.
+            # Otherwise its dependencies could shadow the project environment.
+            (Path(bootstrap.name) / "kyth").symlink_to(
+                Path(__file__).absolute().parents[1],
+                target_is_directory=True,
+            )
             env = os.environ.copy()
             env["PYTHONPATH"] = os.pathsep.join(
-                part for part in (str(package_root), env.get("PYTHONPATH", "")) if part
+                part for part in (bootstrap.name, env.get("PYTHONPATH", "")) if part
             )
             args = [
                 str(self.python),
@@ -138,6 +144,7 @@ class ExternalChildProcess(ChildProcess):
                 if process.poll() is None:
                     process.kill()
                 process.wait()
+            bootstrap.cleanup()
             raise
         finally:
             parent.close()
@@ -153,3 +160,13 @@ class ExternalChildProcess(ChildProcess):
         self._process = cast("BaseProcess", _SubprocessAdapter(process))
         self._readiness = channel
         self._control = channel
+        self._bootstrap = bootstrap
+
+    def close(self) -> None:
+        """Close worker IPC and release its temporary, package-only import path."""
+        try:
+            super().close()
+        finally:
+            if self._bootstrap is not None:
+                self._bootstrap.cleanup()
+                self._bootstrap = None
