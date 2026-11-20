@@ -72,7 +72,6 @@ def _runtime_fallback_paths() -> tuple[str, ...]:
     return tuple(roots)
 
 
-
 def _spawn_worker(
     python: Path,
     bootstrap: tempfile.TemporaryDirectory[str],

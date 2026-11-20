@@ -328,7 +328,6 @@ def test_data_update_and_server_error_events_have_structured_payloads() -> None:
     assert error.data == {"message": "startup failed"}
 
 
-
 def _raise_control_error(error: Exception) -> None:
     """Raise in the handler's exception context, as socketserver does."""
     raise error

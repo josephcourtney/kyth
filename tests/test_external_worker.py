@@ -9,9 +9,12 @@ import http.client
 import subprocess
 import sys
 import venv
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from kyth.model import ChildStatus
 from kyth.supervisor import Supervisor, SupervisorConfig
