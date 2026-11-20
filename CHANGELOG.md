@@ -28,6 +28,7 @@ Items should be categorized under these headings:
 
 ### Fixed
 
+- suppress routine browser disconnect exceptions in the control-plane HTTP server while retaining unexpected exception reporting
 - ignore ordinary coverage databases and development-tool cache outputs in filesystem watches, preventing repeated browser reloads caused by `.coverage*` and `.cache/ruff/`
 - reset tab-scoped Kyth generation, view, registration, and preserved-state data when the supervisor control session changes, preventing stale generations from surviving a Kyth restart
 - recover from broken child-control pipes during generation updates by routing them through the supervisor's normal restart path

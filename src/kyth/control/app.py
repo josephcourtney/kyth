@@ -5,6 +5,7 @@ import ipaddress
 import json
 import logging
 import secrets
+import sys
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from queue import Empty
@@ -78,6 +79,12 @@ class _ControlHTTPServer(ThreadingHTTPServer):
 
     def service_actions(self) -> None:
         self.control_state.views.expire_inactive()
+
+    def handle_error(self, request: object, client_address: tuple[str, int]) -> None:
+        """Discard expected browser disconnects; report unexpected exceptions."""
+        if isinstance(sys.exception(), (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
 
 
 class _ControlRequestHandler(BaseHTTPRequestHandler):
