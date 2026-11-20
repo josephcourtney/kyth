@@ -65,7 +65,8 @@ def _runtime_fallback_paths() -> tuple[str, ...]:
         spec = importlib.util.find_spec(name)
         if spec is None or spec.origin is None:
             continue
-        root = str(Path(spec.origin).absolute().parent.parent)
+        origin = Path(spec.origin).absolute()
+        root = str(origin.parent.parent if spec.submodule_search_locations is not None else origin.parent)
         if root not in roots:
             roots.append(root)
     return tuple(roots)
@@ -94,8 +95,12 @@ class ExternalChildProcess(ChildProcess):
             msg = "child process has already been started"
             raise RuntimeError(msg)
 
-        parent, child = socket.socketpair()
         bootstrap = tempfile.TemporaryDirectory(prefix="kyth-worker-")
+        try:
+            parent, child = socket.socketpair()
+        except OSError:
+            bootstrap.cleanup()
+            raise
         channel: Connection | None = None
         process: subprocess.Popen[bytes] | None = None
         try:
