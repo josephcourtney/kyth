@@ -244,9 +244,10 @@ class Supervisor:
         control = self._require_control()
         generation = self.state.generation + 1
         control_host, control_port = control.address
+        python = self.config.python
         child = (
-            ExternalChildProcess(python=self.config.python, app_dir=self.config.app_dir or Path.cwd())
-            if self.config.python is not None
+            ExternalChildProcess(python=python, app_dir=self.config.app_dir or Path.cwd())
+            if python is not None
             else ChildProcess(context=self._process_context)
         )
         child.start(
