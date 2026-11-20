@@ -41,7 +41,7 @@ def main() -> int:
             if root not in sys.path:
                 sys.path.append(root)
 
-        from kyth.process.child import run_child
+        from kyth.process.child import run_child  # noqa: PLC0415 - load runtime after fallback paths
 
         run_child(
             settings["app_target"],
@@ -60,7 +60,8 @@ def main() -> int:
         try:
             channel.send(StartupEvent.failed(f"{type(exc).__name__}: {exc}"))
         except (BrokenPipeError, EOFError, OSError):
-            pass
+            # The supervisor may already have disconnected.
+            pass  # noqa: S110
         traceback.print_exc()
         return 1
     finally:

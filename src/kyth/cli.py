@@ -21,8 +21,16 @@ def _parser() -> argparse.ArgumentParser:
         description="Run an ASGI application under the Kyth development supervisor.",
     )
     parser.add_argument("app", help="ASGI import target, for example package.module:app")
-    parser.add_argument("--python", type=Path, help="application Python executable (default: .venv/bin/python if present)")
-    parser.add_argument("--app-dir", type=Path, help="application import root (default: detected src/ layout or current directory)")
+    parser.add_argument(
+        "--python",
+        type=Path,
+        help="application Python executable (default: .venv/bin/python if present)",
+    )
+    parser.add_argument(
+        "--app-dir",
+        type=Path,
+        help="application import root (default: detected src/ layout or current directory)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="show detailed reload-decision diagnostics")
     parser.add_argument("--host", default="127.0.0.1", help="application host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="application port (default: 8000)")

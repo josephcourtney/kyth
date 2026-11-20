@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import socket
-import subprocess
+import subprocess  # noqa: S404 - Kyth is a subprocess supervisor
 import sys
 from multiprocessing.connection import Connection
 from pathlib import Path
@@ -76,6 +76,7 @@ class ExternalChildProcess(ChildProcess):
     """Start the existing ASGI worker with an independently selected Python."""
 
     def __init__(self, *, python: Path, app_dir: Path) -> None:
+        """Keep the selected interpreter and application source root."""
         super().__init__()
         self.python = python
         self.app_dir = app_dir
@@ -111,7 +112,7 @@ class ExternalChildProcess(ChildProcess):
                 str(listening_socket.fileno()),
                 str(child.fileno()),
             ]
-            process = subprocess.Popen(
+            process = subprocess.Popen(  # noqa: S603 - argv list, no shell
                 args,
                 cwd=Path.cwd(),
                 env=env,
@@ -141,6 +142,10 @@ class ExternalChildProcess(ChildProcess):
         finally:
             parent.close()
             child.close()
+
+        if process is None or channel is None:
+            msg = "application subprocess launch did not initialize IPC"
+            raise RuntimeError(msg)
 
         # The inherited ChildProcess policy owns all readiness, generation,
         # shutdown escalation, and cleanup. One duplex channel is sufficient:
