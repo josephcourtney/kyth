@@ -96,8 +96,6 @@ def test_environment_resolution_discovers_venv_and_src_package(tmp_path: Path) -
 @pytest.mark.unit
 @pytest.mark.small
 def test_parser_accepts_application_environment_overrides() -> None:
-    args = _parser().parse_args([
-        "haint.server:app", "--python", ".venv/bin/python", "--app-dir", "src"
-    ])
+    args = _parser().parse_args(["haint.server:app", "--python", ".venv/bin/python", "--app-dir", "src"])
     assert args.python == Path(".venv/bin/python")
     assert args.app_dir == Path("src")

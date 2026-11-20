@@ -111,9 +111,7 @@ class ExternalChildProcess(ChildProcess):
                 target_is_directory=True,
             )
             env = os.environ.copy()
-            env["PYTHONPATH"] = os.pathsep.join(
-                part for part in (bootstrap.name, env.get("PYTHONPATH", "")) if part
-            )
+            env["PYTHONPATH"] = os.pathsep.join(part for part in (bootstrap.name, env.get("PYTHONPATH", "")) if part)
             args = [
                 str(self.python),
                 "-m",
