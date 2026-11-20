@@ -4,7 +4,7 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-Kyth 1.0.1 is the current stable V1 patch baseline. The active branch adds independently selected application interpreters to support projects that do not install Kyth. The change is not yet qualified by the canonical test gates.
+Kyth 1.0.1 is the stable V1 patch baseline. The active branch supports independent project interpreters without installing Kyth into client environments. Haint field testing confirms startup, API requests, and readiness-gated restart; the latest cache-filter and control-disconnect fixes still require full validation.
 
 ## Current state
 
@@ -22,7 +22,8 @@ Kyth 1.0.1 is the current stable V1 patch baseline. The active branch adds indep
 
 ## Next priorities
 
-- run `just check`, `just browser-test`, and cross-interpreter macOS/Linux smoke tests for the external worker, including a real Haint `.venv` with the `server` dependency group;
+- rerun `just check` and `just browser-test` on the latest branch head; the prior browser run passed 90 tests, while the prior canonical gate stopped on two formatting violations (subsequently corrected);
+- verify macOS/Linux cross-interpreter worker behavior and Haint field-session stability after generated-artifact and disconnected-client filtering;
 - exercise the `examples/e2e/` projects through genuine iterative editing sessions and turn unexplained behavior into concrete issues;
 - keep the canonical, browser, complexity, and supported lifecycle gates green;
 - add WebKit, diagnostic history, a standalone JavaScript source/lint path, or a broader plugin framework only in response to concrete product or maintenance needs.
