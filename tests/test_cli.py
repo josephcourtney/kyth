@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from kyth.cli import _configure_logging, _parser
+from kyth.cli import _configure_logging, _parser, _resolve_app_dir, _resolve_python
 
 
 @pytest.mark.unit
@@ -76,3 +76,28 @@ def test_configure_logging_keeps_root_at_info_and_scopes_debug_to_kyth(
     )
     get_logger.assert_called_once_with("kyth")
     kyth_logger.setLevel.assert_called_once_with(kyth_level)
+
+
+@pytest.mark.component
+@pytest.mark.medium
+def test_environment_resolution_discovers_venv_and_src_package(tmp_path: Path) -> None:
+    python = tmp_path / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+    package = tmp_path / "src" / "haint"
+    package.mkdir(parents=True)
+
+    assert _resolve_python(None, tmp_path) == python
+    assert _resolve_app_dir(None, tmp_path, "haint.server:app") == tmp_path / "src"
+    assert _resolve_app_dir(None, tmp_path, "other.server:app") == tmp_path
+    assert _resolve_app_dir(tmp_path, tmp_path, "haint.server:app") == tmp_path
+
+
+@pytest.mark.unit
+@pytest.mark.small
+def test_parser_accepts_application_environment_overrides() -> None:
+    args = _parser().parse_args([
+        "haint.server:app", "--python", ".venv/bin/python", "--app-dir", "src"
+    ])
+    assert args.python == Path(".venv/bin/python")
+    assert args.app_dir == Path("src")
