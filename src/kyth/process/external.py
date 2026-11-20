@@ -6,11 +6,11 @@ made importable in the project process; the project environment is not modified.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import os
 import socket
 import subprocess  # noqa: S404 - Kyth is a subprocess supervisor
-import sys
 import tempfile
 from multiprocessing.connection import Connection
 from pathlib import Path
@@ -40,10 +40,8 @@ class _SubprocessAdapter:
         return self.process.poll() is None
 
     def join(self, timeout: float) -> None:
-        try:
+        with contextlib.suppress(subprocess.TimeoutExpired):
             self.process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            pass
 
     def terminate(self) -> None:
         self.process.terminate()
@@ -63,7 +61,7 @@ def _runtime_fallback_paths() -> tuple[str, ...]:
     in the worker. They do not replace the project's packages or interpreter.
     """
     roots: list[str] = []
-    for name in ("uvicorn", "h11", "click"):
+    for name in ("uvicorn", "h11", "click", "typing_extensions"):
         spec = importlib.util.find_spec(name)
         if spec is None or spec.origin is None:
             continue
@@ -126,17 +124,19 @@ class ExternalChildProcess(ChildProcess):
                 close_fds=True,
             )
             channel = Connection(parent.detach())
-            channel.send({
-                "app_target": app_target,
-                "import_root": str(self.app_dir),
-                "socket_family": int(listening_socket.family),
-                "socket_type": int(listening_socket.type),
-                "socket_proto": listening_socket.proto,
-                "control_url": control_url,
-                "control_token": control_token,
-                "generation": generation,
-                "fallback_paths": _runtime_fallback_paths(),
-            })
+            channel.send(
+                {
+                    "app_target": app_target,
+                    "import_root": str(self.app_dir),
+                    "socket_family": int(listening_socket.family),
+                    "socket_type": int(listening_socket.type),
+                    "socket_proto": listening_socket.proto,
+                    "control_url": control_url,
+                    "control_token": control_token,
+                    "generation": generation,
+                    "fallback_paths": _runtime_fallback_paths(),
+                }
+            )
         except Exception:  # noqa: BLE001 - release resources after any subprocess-launch error
             if channel is not None:
                 channel.close()

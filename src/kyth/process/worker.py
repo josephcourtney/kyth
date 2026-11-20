@@ -7,6 +7,7 @@ fallbacks before the ASGI server and application modules are imported.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import traceback
 from multiprocessing.connection import Connection
@@ -57,11 +58,9 @@ def main() -> int:
             channel,
         )
     except Exception as exc:  # noqa: BLE001 - report arbitrary worker startup failures
-        try:
+        # The supervisor may already have disconnected.
+        with contextlib.suppress(BrokenPipeError, EOFError, OSError):
             channel.send(StartupEvent.failed(f"{type(exc).__name__}: {exc}"))
-        except (BrokenPipeError, EOFError, OSError):
-            # The supervisor may already have disconnected.
-            pass  # noqa: S110
         traceback.print_exc()
         return 1
     finally:
