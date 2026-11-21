@@ -358,7 +358,6 @@ class Supervisor:
                 return
             batch = pending
 
-
     @staticmethod
     def _coalesce_watch_batches(initial: FileBatch, source: BatchSource) -> FileBatch:
         """Combine queued edits before restart, then settle dependency bursts."""
