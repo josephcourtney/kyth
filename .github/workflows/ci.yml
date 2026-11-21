@@ -70,12 +70,25 @@ jobs:
           tests/test_process_manager.py
           tests/test_spawn_import_root.py
 
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+      - run: uv run just build-release
+      - run: uv run just release-smoke
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - check
       - browser
       - isolated-worker
+      - wheel
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
