@@ -55,7 +55,7 @@ def _run_worker(channel: Connection, listening_fd: int) -> None:
             sys.path.append(root)
 
     # Worker-only dependencies must load after environment fallbacks.
-    from kyth.process.child import run_child  # noqa: PLC0415
+    from kyth.process.child import run_child  # ruff: ignore[import-outside-top-level]
 
     run_child(
         settings["app_target"],
@@ -82,7 +82,7 @@ def main() -> int:
     channel = Connection(int(sys.argv[2]))
     try:
         _run_worker(channel, listening_fd)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # ruff: ignore[blind-except]
         # The supervisor may already have disconnected.
         with contextlib.suppress(BrokenPipeError, EOFError, OSError):
             channel.send(StartupEvent.failed(f"{type(exc).__name__}: {exc}"))
