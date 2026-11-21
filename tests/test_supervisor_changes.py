@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -47,7 +48,11 @@ def test_restart_cycle_coalesces_pending_restart_changes() -> None:
     with patch.object(supervisor, "_restart_for_change_cycle", return_value=None) as restart:
         supervisor._handle_change_cycle(_batch("/project/first.py"), source)
 
-    assert restart.call_count == 2
+    restart.assert_called_once_with((
+        Path("/project/first.py"),
+        Path("/project/second.py"),
+        Path("/project/third.py"),
+    ))
 
 
 @pytest.mark.component
@@ -269,3 +274,71 @@ def test_no_action_batch_records_explainable_change_report() -> None:
     assert report.affected_view_ids == ()
     assert report.generation == 0
     assert report.reason == "no-action"
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_dependency_metadata_burst_coalesces_with_pending_source_edits() -> None:
+    supervisor = Supervisor(SupervisorConfig("example:app"))
+    source = _PendingBatches([_batch("/project/uv.lock"), _batch("/project/src/app.py"), None])
+
+    with patch.object(supervisor, "_restart_for_change_cycle", return_value=None) as restart:
+        supervisor._handle_change_cycle(_batch("/project/pyproject.toml"), source)
+
+    restart.assert_called_once_with((
+        Path("/project/pyproject.toml"),
+        Path("/project/src/app.py"),
+        Path("/project/uv.lock"),
+    ))
+    assert supervisor._dependency_recovery is not None
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_failed_dependency_restart_retries_when_due_and_stops_after_success() -> None:
+    supervisor = Supervisor(SupervisorConfig("example:app"))
+    supervisor.state = replace(supervisor.state, child=ChildState(ChildStatus.FAILED, error="dependency not installed"))
+    changed = (Path("/project/uv.lock"),)
+    supervisor._update_dependency_recovery(changed, succeeded=False)
+    pending = supervisor._dependency_recovery
+    assert pending is not None
+    decision = BrowserUpdateDecision(changed, (), (), "server-restart")
+
+    with patch.object(supervisor, "_restart_for_change_cycle", return_value=decision) as restart:
+        supervisor._retry_failed_dependency_restart()
+        restart.assert_not_called()
+        supervisor._dependency_recovery = replace(pending, due_at=0.0)
+        supervisor._retry_failed_dependency_restart()
+        restart.assert_called_once_with(changed)
+
+    assert supervisor._dependency_recovery is None
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_dependency_restart_retry_budget_is_finite() -> None:
+    supervisor = Supervisor(SupervisorConfig("example:app"))
+    supervisor.state = replace(supervisor.state, child=ChildState(ChildStatus.FAILED, error="missing dependency"))
+    supervisor._update_dependency_recovery((Path("/project/pyproject.toml"),), succeeded=False)
+
+    with patch.object(supervisor, "_restart_for_change_cycle", return_value=None) as restart:
+        for _ in range(5):
+            pending = supervisor._dependency_recovery
+            assert pending is not None
+            supervisor._dependency_recovery = replace(pending, due_at=0.0)
+            supervisor._retry_failed_dependency_restart()
+        assert restart.call_count == 5
+
+    assert supervisor._dependency_recovery is None
+
+
+@pytest.mark.component
+@pytest.mark.small
+def test_python_only_start_failure_does_not_schedule_dependency_retries() -> None:
+    supervisor = Supervisor(SupervisorConfig("example:app"))
+    source = _PendingBatches([])
+
+    with patch.object(supervisor, "_restart_for_change_cycle", return_value=None):
+        supervisor._handle_change_cycle(_batch("/project/src/app.py"), source)
+
+    assert supervisor._dependency_recovery is None

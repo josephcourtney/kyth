@@ -10,7 +10,7 @@ import contextlib
 import importlib.util
 import os
 import socket
-import subprocess  # noqa: S404
+import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
 from multiprocessing.connection import Connection
 from pathlib import Path
@@ -93,7 +93,7 @@ def _spawn_worker(
         str(child.fileno()),
     ]
     # The command is constructed internally; no shell or user-provided arguments.
-    return subprocess.Popen(  # noqa: S603
+    return subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
         args,
         cwd=Path.cwd(),
         env=env,

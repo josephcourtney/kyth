@@ -32,6 +32,12 @@ continues to support the original multiprocessing worker.
   lower priority than the project's packages. This is pragmatic import
   isolation, not a security sandbox or complete package namespace isolation.
 
+## Dependency synchronization and failure recovery
+
+Kyth does not manage dependency installations. Changes to `pyproject.toml` and `uv.lock` are coalesced over a bounded quiet interval before restarting, and transient startup failures associated with those changes are retried at most five times. Failure does not commit a new browser generation; the supervisor retains its control plane and the next successful worker start performs the normal readiness-gated browser synchronization. The retry budget is finite to avoid obscuring permanently broken environments.
+
+Cross-interpreter tests exercise host and child Python versions 3.12–3.14 on Linux and macOS. Each isolated test environment deliberately excludes Kyth and Uvicorn, so the child runtime falls back to the standalone supervisor's installation.
+
 ## Alternatives
 
 - Shared interpreter (`uv run --with-editable`): simpler, but couples

@@ -17,6 +17,8 @@ Items should be categorized under these headings:
 
 ## Unreleased
 
+## [1.1.0] - 2026-11-20
+
 ### Added
 
 - run Kyth's development supervisor independently from project virtual environments, automatically selecting the project's `.venv/bin/python` and `src/` import layout when present
@@ -28,6 +30,10 @@ Items should be categorized under these headings:
 
 ### Fixed
 
+- coalesce already pending filesystem edits before server restart; briefly settle lockfile and dependency-metadata bursts
+- automatically retry dependency-related application startup failures with a finite schedule instead of requiring a subsequent file edit, without modifying the project environment
+- retain the supervisor and control plane when an external Python executable temporarily disappears during dependency synchronization
+- use repository-standard Ruff suppression comments so the committed tree passes lint in CI
 - classify `uv.lock` updates as application restarts and ignore uv's atomic `.tmpXXXXXX` writes, avoiding spurious browser-only reloads during dependency synchronization
 - suppress routine browser disconnect exceptions in the control-plane HTTP server while retaining unexpected exception reporting
 - ignore ordinary coverage databases and development-tool cache outputs in filesystem watches, preventing repeated browser reloads caused by `.coverage*` and `.cache/ruff/`
