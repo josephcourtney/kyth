@@ -38,11 +38,44 @@ jobs:
       - run: uv run just browser-install
       - run: uv run just browser-test
 
+
+  isolated-worker:
+    name: isolated worker (${{ matrix.os }}, host ${{ matrix.supervisor }}, child ${{ matrix.child }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, supervisor: "3.12", child: "3.14" }
+          - { os: ubuntu-latest, supervisor: "3.13", child: "3.13" }
+          - { os: ubuntu-latest, supervisor: "3.14", child: "3.12" }
+          - { os: macos-latest, supervisor: "3.12", child: "3.14" }
+          - { os: macos-latest, supervisor: "3.13", child: "3.13" }
+          - { os: macos-latest, supervisor: "3.14", child: "3.12" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.supervisor }}
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install ${{ matrix.child }}
+      - run: uv sync --python ${{ matrix.supervisor }}
+      - name: Resolve independent application interpreter
+        shell: bash
+        run: echo "KYTH_TEST_CHILD_PYTHON=$(uv python find ${{ matrix.child }})" >> "$GITHUB_ENV"
+      - name: Exercise independent interpreter and lifecycle
+        run: >-
+          uv run --python ${{ matrix.supervisor }} python -m pytest --no-cov -q
+          tests/test_external_worker.py
+          tests/test_process_manager.py
+          tests/test_spawn_import_root.py
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - check
       - browser
+      - isolated-worker
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

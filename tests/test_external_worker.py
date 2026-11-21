@@ -6,9 +6,10 @@ The isolated virtual environment deliberately does not install Kyth or Uvicorn.
 from __future__ import annotations
 
 import http.client
+import os
 import subprocess
 import sys
-import venv
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -27,7 +28,12 @@ def _project(tmp_path: Path) -> tuple[Path, Path]:
     package = src / "sample_app"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("", encoding="utf-8")
-    venv.EnvBuilder(with_pip=False, symlinks=True).create(tmp_path / ".venv")
+    target_python = os.environ.get("KYTH_TEST_CHILD_PYTHON", sys.executable)
+    subprocess.run(
+        [target_python, "-m", "venv", "--without-pip", "--symlinks", str(tmp_path / ".venv")],
+        check=True,
+        timeout=30,
+    )
     python = tmp_path / ".venv" / "bin" / "python"
     subprocess.run(
         [str(python), "-I", "-c", "import importlib.util; assert importlib.util.find_spec('kyth') is None"],
@@ -133,3 +139,72 @@ def test_external_worker_reports_import_failure_and_recovers(tmp_path: Path) -> 
         assert supervisor.restart_child()
         assert supervisor.state.generation == 1
         assert "recovered|" in _get_html(supervisor)
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_missing_project_interpreter_is_reported_and_can_recover(tmp_path: Path) -> None:
+    module, python = _project(tmp_path)
+    _write_application(module, text="available")
+    target = python.readlink()
+    config = SupervisorConfig(
+        "sample_app.server:app",
+        python=python,
+        app_dir=tmp_path / "src",
+        port=0,
+        startup_timeout=12.0,
+        shutdown_timeout=1.0,
+    )
+    with Supervisor(config) as supervisor:
+        python.unlink()
+        try:
+            assert not supervisor.start_child()
+            assert supervisor.state.child.status is ChildStatus.FAILED
+            assert supervisor.state.child.error is not None
+            assert "FileNotFoundError" in supervisor.state.child.error
+        finally:
+            python.symlink_to(target)
+
+        assert supervisor.restart_child()
+        assert supervisor.state.generation == 1
+        assert "available|" in _get_html(supervisor)
+
+
+@pytest.mark.system
+@pytest.mark.medium
+def test_dependency_restart_recovers_without_another_file_event(tmp_path: Path) -> None:
+    module, python = _project(tmp_path)
+    lockfile = tmp_path / "uv.lock"
+    lockfile.write_text("lock in progress", encoding="utf-8")
+    config = SupervisorConfig(
+        "sample_app.server:app",
+        python=python,
+        app_dir=tmp_path / "src",
+        port=0,
+        startup_timeout=12.0,
+        shutdown_timeout=1.0,
+    )
+    with Supervisor(config) as supervisor:
+        from unittest.mock import Mock
+
+        from kyth.model import FileBatch, FileEvent, FileOperation
+
+        source = Mock()
+        source.drain_pending.return_value = None
+        source.next_batch.return_value = None
+        initial = FileBatch.from_events([FileEvent(lockfile, FileOperation.MODIFIED)])
+        supervisor._handle_change_cycle(initial, source)
+        assert supervisor.state.child.status is ChildStatus.FAILED
+        pending = supervisor._dependency_recovery
+        assert pending is not None
+
+        # Installing the application changes only the ignored environment.
+        # No second watched batch is needed to make the worker ready.
+        _write_application(module, text="installed")
+        supervisor._dependency_recovery = replace(pending, due_at=0.0)
+        supervisor._retry_failed_dependency_restart()
+
+        assert supervisor.state.child.status is ChildStatus.READY
+        assert supervisor.state.generation == 1
+        assert supervisor._dependency_recovery is None
+        assert "installed|" in _get_html(supervisor)
