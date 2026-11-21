@@ -282,7 +282,7 @@ class Supervisor:
             error = f"{type(exc).__name__}: {exc}"
             self.state = replace(self.state, child=ChildState(ChildStatus.FAILED, error=error))
             control.publish(ControlEvent.server_error(self.state.generation, message=error))
-            logger.error("application launch failed: %s", error)
+            logger.exception("application launch failed: %s", error)
             return False
         self._child = child
         self.state = replace(self.state, child=ChildState(ChildStatus.STARTING, pid=child.pid))

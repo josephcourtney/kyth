@@ -10,7 +10,7 @@ import contextlib
 import importlib.util
 import os
 import socket
-import subprocess  # ruff: ignore[suspicious-subprocess-imports]
+import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
 from multiprocessing.connection import Connection
 from pathlib import Path
