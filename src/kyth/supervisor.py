@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
@@ -30,6 +31,20 @@ if TYPE_CHECKING:
     from types import TracebackType
 
 logger = logging.getLogger(__name__)
+
+# Give lockfile/manifest writes a short quiet interval without blocking normal
+# source-only restarts. No external dependency manager is invoked by Kyth.
+DEPENDENCY_RESTART_FILENAMES = frozenset({"pyproject.toml", "uv.lock"})
+DEPENDENCY_SETTLE_SECONDS = 0.45
+DEPENDENCY_SETTLE_LIMIT_SECONDS = 2.0
+DEPENDENCY_RETRY_DELAYS = (0.5, 1.0, 2.0, 4.0, 8.0)
+
+
+@dataclass(frozen=True, slots=True)
+class _DependencyRecovery:
+    changed_paths: tuple[Path, ...]
+    retry_index: int
+    due_at: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +109,7 @@ class Supervisor:
         )
         self._deduplicator = BatchDeduplicator()
         self._last_change_report: ChangeCycleReport | None = None
+        self._dependency_recovery: _DependencyRecovery | None = None
 
     @property
     def last_change_report(self) -> ChangeCycleReport | None:
@@ -191,6 +207,8 @@ class Supervisor:
                 batch = source.next_batch(timeout=poll_interval)
                 if batch is not None:
                     self._handle_change_cycle(batch, source)
+                else:
+                    self._retry_failed_dependency_restart()
         finally:
             source.close()
 
@@ -250,13 +268,22 @@ class Supervisor:
             if python is not None
             else ChildProcess(context=self._process_context)
         )
-        child.start(
-            self.config.app_target,
-            listening_socket,
-            control_url=f"http://{control_host}:{control_port}",
-            control_token=control.token,
-            generation=generation,
-        )
+        try:
+            child.start(
+                self.config.app_target,
+                listening_socket,
+                control_url=f"http://{control_host}:{control_port}",
+                control_token=control.token,
+                generation=generation,
+            )
+        except OSError as exc:
+            # A virtualenv executable can briefly disappear during uv sync.
+            # Preserve the control plane and let dependency recovery retry.
+            error = f"{type(exc).__name__}: {exc}"
+            self.state = replace(self.state, child=ChildState(ChildStatus.FAILED, error=error))
+            control.publish(ControlEvent.server_error(self.state.generation, message=error))
+            logger.error("application launch failed: %s", error)
+            return False
         self._child = child
         self.state = replace(self.state, child=ChildState(ChildStatus.STARTING, pid=child.pid))
 
@@ -287,7 +314,7 @@ class Supervisor:
     def _handle_change_cycle(self, initial_batch: FileBatch, source: BatchSource) -> None:
         batch = initial_batch
         while True:
-            batch = self._deduplicator.filter(batch)
+            batch = self._deduplicator.filter(self._coalesce_watch_batches(batch, source))
             if not batch.events:
                 pending = source.drain_pending()
                 if pending is None:
@@ -313,6 +340,7 @@ class Supervisor:
             if changes.requires_restart:
                 decision = self._restart_for_change_cycle(changes.batch.paths)
                 restart_succeeded = decision is not None
+                self._update_dependency_recovery(changes.restart_paths, succeeded=restart_succeeded)
             elif relevant_paths:
                 decision = self._reload_for_browser_change(relevant_paths)
 
@@ -329,6 +357,66 @@ class Supervisor:
             if pending is None:
                 return
             batch = pending
+
+
+    @staticmethod
+    def _coalesce_watch_batches(initial: FileBatch, source: BatchSource) -> FileBatch:
+        """Combine queued edits before restart, then settle dependency bursts."""
+        batch = initial
+        while (pending := source.drain_pending()) is not None:
+            batch = batch.merged(pending)
+
+        if not any(path.name in DEPENDENCY_RESTART_FILENAMES for path in batch.paths):
+            return batch
+
+        deadline = time.monotonic() + DEPENDENCY_SETTLE_LIMIT_SECONDS
+        while (remaining := min(DEPENDENCY_SETTLE_SECONDS, deadline - time.monotonic())) > 0:
+            followup = source.next_batch(timeout=remaining)
+            if followup is None:
+                break
+            batch = batch.merged(followup)
+            while (pending := source.drain_pending()) is not None:
+                batch = batch.merged(pending)
+        return batch
+
+    def _update_dependency_recovery(self, paths: tuple[Path, ...], *, succeeded: bool) -> None:
+        """Retry only failures associated with dependency metadata changes."""
+        if succeeded:
+            self._dependency_recovery = None
+            return
+        previous = self._dependency_recovery
+        if previous is None and not any(path.name in DEPENDENCY_RESTART_FILENAMES for path in paths):
+            return
+        tracked = set(paths)
+        if previous is not None:
+            tracked.update(previous.changed_paths)
+        self._dependency_recovery = _DependencyRecovery(
+            changed_paths=tuple(sorted(tracked, key=Path.as_posix)),
+            retry_index=0,
+            due_at=time.monotonic() + DEPENDENCY_RETRY_DELAYS[0],
+        )
+
+    def _retry_failed_dependency_restart(self) -> None:
+        """Recover when uv sync finishes without producing another watched edit."""
+        pending = self._dependency_recovery
+        if pending is None or self.state.child.status is not ChildStatus.FAILED:
+            return
+        if time.monotonic() < pending.due_at:
+            return
+        self._dependency_recovery = None
+        logger.info("retrying application after dependency update (%d)", pending.retry_index + 1)
+        if self._restart_for_change_cycle(pending.changed_paths) is not None:
+            return
+
+        next_index = pending.retry_index + 1
+        if next_index >= len(DEPENDENCY_RETRY_DELAYS):
+            logger.warning("dependency restart retry budget exhausted; awaiting the next edit")
+            return
+        self._dependency_recovery = _DependencyRecovery(
+            changed_paths=pending.changed_paths,
+            retry_index=next_index,
+            due_at=time.monotonic() + DEPENDENCY_RETRY_DELAYS[next_index],
+        )
 
     def _restart_for_change_cycle(self, changed_paths: tuple[Path, ...]) -> BrowserUpdateDecision | None:
         """Replace the child, then synchronize only views whose served state is ready."""
