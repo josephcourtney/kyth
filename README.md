@@ -2,7 +2,7 @@
 
 Kyth is a local development supervisor for Python web applications and generated websites. It restarts server code safely, keeps the public listening socket stable across restarts, and synchronizes browser views with coherent development generations.
 
-The current stable baseline is **v1.0.1**.
+The current version is **1.1.0**.
 
 The ground-up V1 implementation now covers the complete design surface: supervisor-owned application and control sockets, restartable ASGI lifecycle, filesystem watching, transparent HTML client injection, generation-aware reload, direct output/resource awareness, narrow CSS/image updates, server-render provenance with zero-touch Jinja tracing, generated-site dependency manifests, configurable runtime restart inputs, explicit render/data dependencies, custom readiness, opt-in browser state preservation, semantic data updates, external-HMR coexistence, scoped conservative fallback rules, and structured decision diagnostics.
 
@@ -20,7 +20,7 @@ or into a Python environment with pip:
 python -m pip install kyth
 ```
 
-Kyth supports Python 3.12 through 3.14 on macOS and Linux.
+Kyth supports Python 3.12 through 3.14 on macOS and Linux. The isolated-worker CI matrix exercises supervisor and application interpreters from these supported versions on both platforms.
 
 Basic usage:
 
@@ -61,6 +61,8 @@ multiprocessing worker; the CLI uses the external worker by default.
 Use repeated `--watch PATH` options to override the default current-directory watch root, repeated `--ignore PATH` options to add ignored paths, `--restart-on PATTERN` for additional process-loaded configuration, `--external-hmr-on PATTERN` for browser assets owned by another development server, and `--fallback-scope SOURCE_GLOB URL_GLOB` to narrow conservative reload for otherwise-uncertain source/view relationships. `--verbose` exposes the full change-decision chain. Use `--control-port PORT` only when a fixed loopback control port is required; otherwise Kyth chooses one automatically.
 
 Kyth ignores common generated development artifacts including `.cache/`, `.ruff_cache/`, `htmlcov/`, `.coverage*`, and uv's short-lived `.tmpXXXXXX` lockfile writes by default. Changes to `uv.lock` require an application restart; they do not install or synchronize project dependencies. Hidden application configuration such as `.env` is still watched. Other project-specific generated outputs can be excluded with `--ignore`.
+
+Dependency-metadata changes (`pyproject.toml` and `uv.lock`) use a short, bounded quiet interval before an application restart, coalescing ordinary `uv sync` edit bursts. If a dependency-related restart fails while the project environment is being synchronized, Kyth retries at most five times, after delays of 0.5, 1, 2, 4, and 8 seconds. A successful retry commits a new generation and synchronizes browsers; exhausting the retry budget leaves a visible startup error until the next relevant edit. Unrelated syntax/import failures are not automatically retried. Kyth does not invoke `uv sync`, install dependencies, or watch the contents of `.venv`.
 
 The browser control plane is intentionally loopback-only. Binding the application server itself to a non-loopback host does not make Kyth a remote-device development coordinator: the synchronized browser must run on the same machine as Kyth. This keeps the development control service outside the remotely reachable application surface.
 

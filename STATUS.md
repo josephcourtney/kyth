@@ -4,7 +4,7 @@ This file records the current implementation state and immediate handoff context
 
 ## Current focus
 
-Kyth 1.0.1 is the stable V1 patch baseline. The active branch supports independent project interpreters without installing Kyth into client environments. Haint field testing confirms startup, API requests, and readiness-gated restart; the latest fix set still requires full validation. The first complete suite run found two macOS virtualenv fixture failures, now addressed by symlinking the interpreter; source lint and type errors were also corrected.
+Kyth 1.1.0 is being qualified as a backward-compatible feature release for separately installed application interpreters. The Haint field session and local canonical/browser suites demonstrated working startup, API requests, readiness-gated restart, and recovery after source edits. The first remote post-merge CI run revealed four suppression-style lint errors in the committed tree; the release-qualification branch corrects those and adds bounded dependency-sync recovery. Remote CI is the remaining release gate.
 
 ## Current state
 
@@ -22,8 +22,7 @@ Kyth 1.0.1 is the stable V1 patch baseline. The active branch supports independe
 
 ## Next priorities
 
-- rerun `just check` and `just browser-test` on the latest branch head; the prior browser run passed 90 tests and the first full source suite had 248 passes and two fixture failures;
-- verify macOS/Linux cross-interpreter worker behavior and Haint field-session stability after generated-artifact, temporary lockfile, and disconnected-client filtering;
-- exercise the `examples/e2e/` projects through genuine iterative editing sessions and turn unexplained behavior into concrete issues;
-- keep the canonical, browser, complexity, and supported lifecycle gates green;
-- add WebKit, diagnostic history, a standalone JavaScript source/lint path, or a broader plugin framework only in response to concrete product or maintenance needs.
+- require the committed qualification branch to pass remote `just check`, strict complexity, 90 browser acceptance tests, and the macOS/Linux isolated-worker interpreter matrix;
+- confirm bounded dependency-restart coalescing and recovery regressions, including missing interpreter and no-follow-up-edit cases;
+- publish/tag 1.1.0 only after the full release preflight is green; do not treat a local dirty-tree check as release evidence;
+- continue ordinary field use and add further browser/tool integrations only for demonstrated gaps.
